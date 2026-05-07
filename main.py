@@ -1,21 +1,14 @@
 import os
-import logging
+import threading
 from flask import Flask
-from threading import Thread
 from telegram import Update
 from telegram.ext import (
-    Application,
+    ApplicationBuilder,
     CommandHandler,
     ContextTypes
 )
 
-# ================= LOG =================
-logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
-
-# ================= FLASK =================
+# ================= WEB =================
 app = Flask(__name__)
 
 @app.route("/")
@@ -31,29 +24,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🚀 Bot çalışıyor")
 
 async def tara(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Tarama sistemi aktif")
+    await update.message.reply_text("✅ Tarama aktif")
 
 def run_bot():
 
-    TOKEN = os.environ.get("TELEGRAM_TOKEN")
+    TOKEN = os.getenv("TELEGRAM_TOKEN")
 
-    if not TOKEN:
-        logging.error("TOKEN bulunamadı")
-        return
-
-    telegram_app = Application.builder().token(TOKEN).build()
+    telegram_app = ApplicationBuilder().token(TOKEN).build()
 
     telegram_app.add_handler(CommandHandler("start", start))
     telegram_app.add_handler(CommandHandler("tara", tara))
 
-    logging.info("Bot başlatılıyor...")
+    print("BOT BAŞLADI")
 
     telegram_app.run_polling()
 
 # ================= MAIN =================
 if __name__ == "__main__":
 
-    web_thread = Thread(target=run_web)
-    web_thread.start()
+    threading.Thread(target=run_web).start()
 
     run_bot()
