@@ -100,7 +100,7 @@ async def manuel_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await sinyal_tara(context)
 
 if __name__ == '__main__':
-    TOKEN = '7984025004:AAGD1lLv5RGOIAiJ9wbQfaxSS7r6BGLteoA'
+    TOKEN = '8027732851:AAFTv0qeU0REVmvjaeCaG8ZkOfmK0ENjiJc'
     app = ApplicationBuilder().token(TOKEN).build()
     
     if app.job_queue:
