@@ -1,5 +1,9 @@
-python-telegram-bot
 yfinance
-mplfinance
 pandas
+mplfinance
+python-telegram-bot[job-queue]
+flask
+matplotlib
+pytz
+requests
 
