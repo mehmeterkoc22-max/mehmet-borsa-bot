@@ -1,6 +1,5 @@
 import os
-import threading
-from flask import Flask
+import logging
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -8,40 +7,33 @@ from telegram.ext import (
     ContextTypes
 )
 
-# ================= WEB =================
-app = Flask(__name__)
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 
-@app.route("/")
-def home():
-    return "Bot aktif ✅"
-
-def run_web():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
-
-# ================= TELEGRAM =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🚀 Bot çalışıyor")
+    await update.message.reply_text("🚀 Bot aktif")
 
 async def tara(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Tarama aktif")
+    await update.message.reply_text("✅ Tarama çalışıyor")
 
-def run_bot():
+def main():
 
     TOKEN = os.getenv("TELEGRAM_TOKEN")
 
-    telegram_app = ApplicationBuilder().token(TOKEN).build()
+    if not TOKEN:
+        print("TOKEN YOK")
+        return
 
-    telegram_app.add_handler(CommandHandler("start", start))
-    telegram_app.add_handler(CommandHandler("tara", tara))
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("tara", tara))
 
     print("BOT BAŞLADI")
 
-    telegram_app.run_polling()
+    app.run_polling()
 
-# ================= MAIN =================
 if __name__ == "__main__":
-
-    threading.Thread(target=run_web).start()
-
-    run_bot()
+    main()
