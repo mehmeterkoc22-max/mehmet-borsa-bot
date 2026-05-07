@@ -1,2 +1,3 @@
-pip install python-telegram-bot
-
+git add requirements.txt
+git commit -m "requirements.txt hatası düzeltildi"
+git push origin main
