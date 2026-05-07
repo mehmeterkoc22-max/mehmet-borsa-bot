@@ -1,0 +1,8 @@
+requests
+yfinance
+pandas
+mplfinance
+python-telegram-bot[job-queue]
+flask
+matplotlib
+pytz
