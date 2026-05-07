@@ -106,7 +106,9 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
         if not s: continue
         
         # STRATEJİ: RSI 30 DİPTEN DÖNÜŞ VEYA RSI 35-45 ARASI GÜÇLENME
-        if (s['rsi_prev'] < 30 and s['rsi'] >= 30) and s['macd'] > s['macd_sig']:
+          if (s['rsi_prev'] < 30 and s['rsi'] >= 30) and s['macd'] > s['macd_sig']:
+            gonderilen_hisseler[s['kod']] = su_an_ts
+            bulunan_sinyal += 1
             gonderilen_hisseler[s['kod']] = su_an_ts
             bulunan_sinyal += 1
             
