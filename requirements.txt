@@ -1,3 +1,5 @@
 python-telegram-bot
 yfinance
+mplfinance
+pandas
 
