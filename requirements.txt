@@ -1,3 +1,1 @@
-git add requirements.txt
-git commit -m "requirements.txt hatası düzeltildi"
-git push origin main
+python-telegram-bot
