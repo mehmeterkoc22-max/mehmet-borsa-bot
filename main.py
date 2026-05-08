@@ -23,30 +23,20 @@ def run_web():
 
 # --- AYARLAR ---
 MY_CHAT_ID = 1033571271
-# Yazım hatası düzeltildi: HHISSE_LISTESI -> HISSE_LISTESI
 HISSE_LISTESI = [
-    # --- YILDIZ PAZAR (En Likitler) ---
     "THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "TUPRS", "FROTO", "KCHOL",
     "TCELL", "PETKM", "SISE", "AKBNK", "SAHOL", "YKBNK", "PGSUS", "ARCLK", "EKGYO", "KOZAL",
     "ASTOR", "KONTR", "YEOTK", "SMRTG", "ENJSA", "HEKTS", "OYAKC", "TOASO", "DOAS", "DOHOL",
-    "ALARK", "MIATK", "GUBRF", "ZOREN", "BRSAN", "CIMSA", "VESTL", "ENKAI", "BEYAZ", "SOKM",
-    
-    # --- ANA PAZAR (Öne Çıkanlar) ---
-    "A1CAP", "BARMA", "ECOGR", "EGPRO", "GEDIK", "GMTAS", "KRDMB", "MOGAN", "NTGAZ", "OYYAT",
-    "PAGYO", "VKGYO", "ADEL", "ADGYO", "AEFES", "AGESA", "AGHOL", "AGROT", "AHGAZ", "AKCNS",
-    "AKFGY", "AKFIS", "AKFYE", "AKGRT", "AKSA", "AKSEN", "AKSGY", "ALBRK", "ALFAS", "ALGYO",
-    "ALTNY", "ANHYT", "ANSGR", "ARASE", "ARDYZ", "ASGYO", "ATAKP", "ATATP", "AVPGY", "AYDEM",
-    
-    # --- DİĞER DİKKAT ÇEKENLER (Hacimli Yan Tahtalar) ---
-    "REEDR", "SDTTR", "MIPAZ", "ZOREN", "EUPWR", "ALVES", "BEYAZ", "CVKMD", "KOPOL", "CWENE"
+    "ALARK", "MIATK", "GUBRF", "ZOREN", "BRSAN", "CIMSA", "VESTL", "ENKAI", "BEYAZ", "SOKM"
 ]
 
 def get_stock_data(ticker):
     try:
         symbol = f"{ticker}.IS"
+        # EMA 200 için veri süresini 60 gün yapıyoruz
         df = yf.download(symbol, period="60d", interval="30m", progress=False, auto_adjust=True, timeout=15)
         
-        if df.empty or len(df) < 200:
+        if df.empty or len(df) < 50:
             return None
 
         if isinstance(df.columns, pd.MultiIndex):
@@ -68,7 +58,7 @@ def get_stock_data(ticker):
         rs = gain / (loss + 1e-9)
         df['RSI'] = 100 - (100 / (1 + rs))
 
-        # 3. MACD (12, 26, 9)
+        # 3. MACD
         df['EMA_12'] = close.ewm(span=12, adjust=False).mean()
         df['EMA_26'] = close.ewm(span=26, adjust=False).mean()
         df['MACD'] = df['EMA_12'] - df['EMA_26']
@@ -87,7 +77,7 @@ def get_stock_data(ticker):
 
         # 6. SMC (BoS)
         recent_high = high.rolling(20).max().iloc[-2]
-        is_bos_up = close.iloc[-1] > recent_high and volume.iloc[-1] > volume.rolling(10).mean().iloc[-1]
+        is_bos_up = close.iloc[-1] > recent_high
 
         return {
             "kod": ticker,
@@ -105,41 +95,40 @@ def get_stock_data(ticker):
         return None
 
 async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
-    # İstediğiniz hızlandırma: max_workers=30 eklendi
+    # max_workers=30 ile hızlandırılmış tarama
     with ThreadPoolExecutor(max_workers=30) as executor:
         loop = asyncio.get_event_loop()
         tasks = [loop.run_in_executor(executor, get_stock_data, kod) for kod in HISSE_LISTESI]
         results = await asyncio.gather(*tasks)
 
     valid = [s for s in results if s]
-    mesaj = "🚀 **SMC & TREND SİNYAL TARAMASI**\n\n"
-    sinyal_bulundu = False
+    mesaj = "🧪 **TEST MODU: TÜM HİSSE ANALİZLERİ**\n\n"
 
     for s in valid:
-        # Ana Filtre: Fiyat EMA 200 üstünde ve Supertrend Yeşil olmalı
-        if s['fiyat'] > s['ema_200'] and s['st_trend'] == "🟢 BOĞA":
-            durum = "🔥 GÜÇLÜ AL" if s['smc_bos'] else "✅ TREND YUKARI"
-            sinyal_bulundu = True
+        # TEST İÇİN TÜMÜNÜ GÖNDERİYOR (Filtre kaldırıldı)
+        if True: 
             mesaj += (
-                f"📊 **#{s['kod']}** - {durum}\n"
+                f"📊 **#{s['kod']}**\n"
                 f"💰 Fiyat: **{s['fiyat']}**\n"
-                f"📏 EMA 50/200: {s['ema_50']}/{s['ema_200']}\n"
-                f"⚡ Supertrend: {s['st_trend']}\n"
-                f"🌊 OBV: {'Hacim Pozitif ✅' if s['obv_pozitif'] else 'Yatay ⚠️'}\n"
-                f"📈 RSI/MACD: {s['rsi']} / {'🟢' if s['macd_ok'] else '🔴'}\n"
-                f"{'💎 BOS KIRILIMI GELDİ!' if s['smc_bos'] else ''}\n\n"
+                f"⚡ Trend: {s['st_trend']}\n"
+                f"📏 EMA 200: {s['ema_200']}\n"
+                f"📈 RSI: {s['rsi']} | MACD: {'🟢' if s['macd_ok'] else '🔴'}\n"
+                f"🏗 BoS: {'✅' if s['smc_bos'] else '❌'}\n\n"
             )
+            
+            # Telegram mesaj sınırı (4096 karakter) olduğu için mesaj çok uzarsa parçalara bölelim
+            if len(mesaj) > 3500:
+                await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
+                mesaj = ""
 
-    if not sinyal_bulundu:
-        mesaj += "Şu an kriterlere uygun hisse bulunamadı."
-
-    await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
+    if mesaj:
+        await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Borsa Botu Aktif! 30 dakikada bir tarama yapar. /analiz ile manuel başlatabilirsin.")
+    await update.message.reply_text("Bot Aktif! /analiz yazarak test taramasını başlatın.")
 
 async def manuel_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔄 Detaylı teknik tarama başlatılıyor...")
+    await update.message.reply_text("🔄 Tüm liste taranıyor, lütfen bekleyin...")
     await sinyal_tara(context)
 
 if __name__ == '__main__':
@@ -152,5 +141,5 @@ if __name__ == '__main__':
     
     app.job_queue.run_repeating(sinyal_tara, interval=1800, first=10)
 
-    logging.info("Bot çalışıyor...")
+    logging.info("Bot test modunda çalışıyor...")
     app.run_polling()
