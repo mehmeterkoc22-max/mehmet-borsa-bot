@@ -23,7 +23,8 @@ def run_web():
 
 # --- AYARLAR ---
 MY_CHAT_ID = 1033571271
-HHISSE_LISTESI = [
+# Yazım hatası düzeltildi: HHISSE_LISTESI -> HISSE_LISTESI
+HISSE_LISTESI = [
     # --- YILDIZ PAZAR (En Likitler) ---
     "THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "TUPRS", "FROTO", "KCHOL",
     "TCELL", "PETKM", "SISE", "AKBNK", "SAHOL", "YKBNK", "PGSUS", "ARCLK", "EKGYO", "KOZAL",
@@ -40,12 +41,9 @@ HHISSE_LISTESI = [
     "REEDR", "SDTTR", "MIPAZ", "ZOREN", "EUPWR", "ALVES", "BEYAZ", "CVKMD", "KOPOL", "CWENE"
 ]
 
-
-
 def get_stock_data(ticker):
     try:
         symbol = f"{ticker}.IS"
-        # EMA 200 ve sağlıklı analiz için 60 günlük veri çekiyoruz
         df = yf.download(symbol, period="60d", interval="30m", progress=False, auto_adjust=True, timeout=15)
         
         if df.empty or len(df) < 200:
@@ -67,7 +65,7 @@ def get_stock_data(ticker):
         delta = close.diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
+        rs = gain / (loss + 1e-9)
         df['RSI'] = 100 - (100 / (1 + rs))
 
         # 3. MACD (12, 26, 9)
@@ -76,23 +74,18 @@ def get_stock_data(ticker):
         df['MACD'] = df['EMA_12'] - df['EMA_26']
         df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
 
-        # 4. OBV (On-Balance Volume)
+        # 4. OBV
         df['OBV'] = (np.sign(close.diff()) * volume).fillna(0).cumsum()
 
-        # 5. Supertrend (ATR 7, Multiplier 3)
+        # 5. Supertrend
         atr_p = 7
         mult = 3
-        high_low = high - low
-        high_cp = abs(high - close.shift())
-        low_cp = abs(low - close.shift())
-        tr = pd.concat([high_low, high_cp, low_cp], axis=1).max(axis=1)
+        tr = pd.concat([high - low, abs(high - close.shift()), abs(low - close.shift())], axis=1).max(axis=1)
         df['ATR'] = tr.rolling(atr_p).mean()
-        
         df['ST_Lower'] = ((high + low) / 2) - (mult * df['ATR'])
         is_st_up = close.iloc[-1] > df['ST_Lower'].iloc[-1]
 
-        # 6. Smart Money Concepts (BoS - Market Yapısı Kırılımı)
-        # Son 20 mumun zirvesi hacimli kırılırsa BoS kabul edilir
+        # 6. SMC (BoS)
         recent_high = high.rolling(20).max().iloc[-2]
         is_bos_up = close.iloc[-1] > recent_high and volume.iloc[-1] > volume.rolling(10).mean().iloc[-1]
 
@@ -112,7 +105,8 @@ def get_stock_data(ticker):
         return None
 
 async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    # İstediğiniz hızlandırma: max_workers=30 eklendi
+    with ThreadPoolExecutor(max_workers=30) as executor:
         loop = asyncio.get_event_loop()
         tasks = [loop.run_in_executor(executor, get_stock_data, kod) for kod in HISSE_LISTESI]
         results = await asyncio.gather(*tasks)
@@ -122,10 +116,7 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
     sinyal_bulundu = False
 
     for s in valid:
-        # GÜÇLÜ ALIM KOŞULLARI:
-        # 1. Fiyat EMA 200 üstünde olacak (Ana trend yukarı)
-        # 2. Supertrend Boğa olacak
-        # 3. Ya BoS kırılımı olacak ya da RSI aşırı satımdan dönecek
+        # Ana Filtre: Fiyat EMA 200 üstünde ve Supertrend Yeşil olmalı
         if s['fiyat'] > s['ema_200'] and s['st_trend'] == "🟢 BOĞA":
             durum = "🔥 GÜÇLÜ AL" if s['smc_bos'] else "✅ TREND YUKARI"
             sinyal_bulundu = True
@@ -134,7 +125,7 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
                 f"💰 Fiyat: **{s['fiyat']}**\n"
                 f"📏 EMA 50/200: {s['ema_50']}/{s['ema_200']}\n"
                 f"⚡ Supertrend: {s['st_trend']}\n"
-                f"🌊 OBV: {'Para Girişi Var ✅' if s['obv_pozitif'] else 'Yatay ⚠️'}\n"
+                f"🌊 OBV: {'Hacim Pozitif ✅' if s['obv_pozitif'] else 'Yatay ⚠️'}\n"
                 f"📈 RSI/MACD: {s['rsi']} / {'🟢' if s['macd_ok'] else '🔴'}\n"
                 f"{'💎 BOS KIRILIMI GELDİ!' if s['smc_bos'] else ''}\n\n"
             )
@@ -153,13 +144,12 @@ async def manuel_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 if __name__ == '__main__':
     Thread(target=run_web).start()
-    TOKEN = "8027732851:AAFTv0qeU0REVmvjaeCaG8ZkOfmK0ENjiJc" # Buraya kendi tokenını gir
+    TOKEN = "8027732851:AAFTv0qeU0REVmvjaeCaG8ZkOfmK0ENjiJc"
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler('start', start_cmd))
     app.add_handler(CommandHandler('analiz', manuel_analiz))
     
-    # Her 30 dakikada bir (1800 saniye) otomatik tarama
     app.job_queue.run_repeating(sinyal_tara, interval=1800, first=10)
 
     logging.info("Bot çalışıyor...")
