@@ -29,13 +29,14 @@ def run_web():
 # --- AYARLAR ---
 MY_CHAT_ID = 1033571271
 
-HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "TUPRS", "FROTO", "KCHOL"]
+HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "TUPRS"]
 
 # --- VERİ ÇEKME ---
 def get_stock_data(ticker):
     try:
         symbol = f"{ticker}.IS"
-        df = yf.download(symbol, period="10d", interval="30m", progress=False, auto_adjust=True, timeout=15)
+        df = yf.download(symbol, period="10d", interval="30m", 
+                        progress=False, auto_adjust=True, timeout=15)
         
         if df.empty or len(df) < 30:
             return None
@@ -67,57 +68,46 @@ def get_stock_data(ticker):
         logging.error(f"{ticker} HATA: {str(e)[:80]}")
         return None
 
-# --- ANA TARAMA ---
+# --- ANA TARAMA (KOŞUL KALDIRILDI) ---
 async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(chat_id=MY_CHAT_ID, text="📡 Tarama başladı...")
+    await context.bot.send_message(chat_id=MY_CHAT_ID, text="📡 Tarama başladı...\nHer hisse için grafik geliyor.")
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         loop = asyncio.get_event_loop()
         tasks = [loop.run_in_executor(executor, get_stock_data, kod) for kod in HISSE_LISTESI]
         results = await asyncio.gather(*tasks)
 
-    bulunan = 0
     for s in results:
         if not s: 
             continue
 
         rsi = s['rsi']
-        rsi_prev = s['rsi_prev']
         macd_guc = s['macd'] > s['macd_sig']
 
-        # Log için RSI değerlerini göster
-        logging.info(f"{s['kod']:6} | RSI: {rsi:.1f} (prev: {rsi_prev:.1f}) | MACD Cross: {macd_guc}")
+        buf = io.BytesIO()
+        mpf.plot(s['df'].tail(50), type='candle', style='charles', savefig=buf, figsize=(10,6))
+        buf.seek(0)
 
-        # Şu anki en gevşek koşul
-        if rsi < 55 and rsi > rsi_prev and macd_guc:
-            bulunan += 1
+        mesaj = (
+            f"📊 **#{s['kod']}**\n\n"
+            f"💰 Fiyat: **{s['fiyat']:.2f}** TL\n"
+            f"📈 RSI: **{rsi:.1f}** (önceki: {s['rsi_prev']:.1f})\n"
+            f"📉 MACD: {'🟢 Üstte' if macd_guc else '🔴 Altta'}"
+        )
 
-            buf = io.BytesIO()
-            mpf.plot(s['df'].tail(50), type='candle', style='charles', savefig=buf, figsize=(10,6))
-            buf.seek(0)
+        keyboard = [[InlineKeyboardButton("📈 TradingView", 
+                    url=f"https://www.tradingview.com/symbols/BIST-{s['kod']}/")]]
 
-            mesaj = (
-                f"🚀 **#{s['kod']} - SİNYAL**\n\n"
-                f"💰 Fiyat: **{s['fiyat']:.2f}** TL\n"
-                f"📊 RSI: **{rsi:.1f}** ↑ (önceki: {rsi_prev:.1f})\n"
-                f"📈 MACD: Güçlü 🟢"
-            )
+        await context.bot.send_photo(chat_id=MY_CHAT_ID, photo=buf, caption=mesaj,
+                                   reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await asyncio.sleep(0.8)
 
-            keyboard = [[InlineKeyboardButton("📈 TradingView", 
-                        url=f"https://www.tradingview.com/symbols/BIST-{s['kod']}/")]]
-
-            await context.bot.send_photo(chat_id=MY_CHAT_ID, photo=buf, caption=mesaj,
-                                       reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-            await asyncio.sleep(0.7)
-
-    await context.bot.send_message(
-        chat_id=MY_CHAT_ID, 
-        text=f"✅ **Tarama Tamamlandı**\n\nBulunan sinyal: **{bulunan}**"
-    )
+    await context.bot.send_message(chat_id=MY_CHAT_ID, 
+                                 text="✅ **Tarama Tamamlandı**\nTüm hisseler gösterildi.")
 
 # --- KOMUT ---
 async def manuel_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔄 Tarama başlatılıyor...")
+    await update.message.reply_text("🔄 Tüm hisseler taranıyor...")
     await sinyal_tara(context)
 
 # --- BAŞLAT ---
@@ -127,7 +117,7 @@ if __name__ == '__main__':
     TOKEN = os.environ.get("TELEGRAM_TOKEN", "7984025004:AAGD1lLv5RGOIAiJ9wbQfaxSS7r6BGLteoA")
     app = ApplicationBuilder().token(TOKEN).build()
 
-    app.job_queue.run_repeating(sinyal_tara, interval=600, first=10)
+    app.job_queue.run_repeating(sinyal_tara, interval=900, first=10)
     app.add_handler(CommandHandler('analiz', manuel_analiz))
 
     logging.info("Bot başlatıldı...")
