@@ -4,6 +4,7 @@ import logging
 import yfinance as yf
 import pandas as pd
 import numpy as np
+from datetime import datetime
 from flask import Flask
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
@@ -30,6 +31,17 @@ HISSE_LISTESI = [
     "REEDR", "SDTTR", "MIPAZ", "EUPWR", "ALVES", "CWENE", "ADEL", "AGROT", "ALFAS", "ARDYZ"
 ]
 
+def piyasa_acik_mi():
+    now = datetime.now()
+    # Hafta sonu kontrolü (Cumartesi=5, Pazar=6)
+    if now.weekday() >= 5:
+        return False
+    # Saat kontrolü (09:55 - 18:10)
+    current_time = now.strftime("%H:%M")
+    if "09:55" <= current_time <= "18:10":
+        return True
+    return False
+
 def get_stock_data(ticker):
     try:
         symbol = f"{ticker}.IS"
@@ -44,10 +56,10 @@ def get_stock_data(ticker):
         close = df['Close']
         high = df['High']
         low = df['Low']
-        
+        volume = df['Volume']
         fiyat = round(float(close.iloc[-1]), 2)
 
-        # 1. EMA 200 (Ana Trend)
+        # 1. EMA 200 (Trend)
         ema_200 = close.ewm(span=200, adjust=False).mean().iloc[-1]
         
         # 2. RSI (14)
@@ -56,25 +68,20 @@ def get_stock_data(ticker):
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
         rsi = 100 - (100 / (1 + (gain / (loss + 1e-9))))
 
-        # 3. ATR Hesaplama (Stop Loss için oynaklık ölçümü)
+        # 3. ATR & Stop/Target
         tr = pd.concat([high - low, abs(high - close.shift()), abs(low - close.shift())], axis=1).max(axis=1)
         atr = tr.rolling(14).mean().iloc[-1]
+        stop_loss = round(fiyat - (atr * 1.5), 2)
+        hedef_fiyat = round(fiyat + ((fiyat - stop_loss) * 2), 2)
 
-        # 4. Supertrend
+        # 4. Hacim Analizi (Anormal Lot Girişi)
+        avg_vol = volume.rolling(20).mean().iloc[-1]
+        hacim_patlamasi = volume.iloc[-1] > (avg_vol * 1.5)
+
+        # 5. Supertrend & BoS
         st_lower = ((high + low) / 2) - (3 * tr.rolling(7).mean())
         is_st_up = fiyat > st_lower.iloc[-1]
-
-        # 5. SMC - BoS
-        recent_high = high.rolling(20).max().iloc[-2]
-        is_bos_up = fiyat > recent_high
-
-        # --- DİNAMİK STRATEJİ HESAPLAMA ---
-        # Stop-Loss: ATR'nin 1.5 katı kadar aşağısı
-        stop_loss = round(fiyat - (atr * 1.5), 2)
-        # Hedef: Riskin 2 katı (Örn: 1 TL risk edip 2 TL kazanmak)
-        risk_miktari = fiyat - stop_loss
-        hedef_fiyat = round(fiyat + (risk_miktari * 2), 2)
-        potansiyel_kar = round(((hedef_fiyat - fiyat) / fiyat) * 100, 1)
+        is_bos_up = fiyat > high.rolling(20).max().iloc[-2]
 
         return {
             "kod": ticker,
@@ -82,49 +89,53 @@ def get_stock_data(ticker):
             "rsi": round(float(rsi.iloc[-1]), 1),
             "ema_200": round(float(ema_200), 2),
             "st_trend": "🟢 BOĞA" if is_st_up else "🔴 AYI",
+            "hacim_uyari": hacim_patlamasi,
             "bos": is_bos_up,
             "stop": stop_loss,
             "hedef": hedef_fiyat,
-            "kar_oran": potansiyel_kar
+            "kar_oran": round(((hedef_fiyat - fiyat) / fiyat) * 100, 1)
         }
-    except Exception as e:
-        return None
+    except: return None
 
 async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(chat_id=MY_CHAT_ID, text="📡 Strateji bazlı tarama başladı...")
-    
+    # Piyasa saatleri dışında otomatik çalışmayı engelle (Manuel komutu engellemez)
+    if not piyasa_acik_mi() and context.job:
+        logging.info("Piyasa kapalı, tarama atlanıyor.")
+        return
+
     with ThreadPoolExecutor(max_workers=30) as executor:
         loop = asyncio.get_event_loop()
         tasks = [loop.run_in_executor(executor, get_stock_data, kod) for kod in HISSE_LISTESI]
         results = await asyncio.gather(*tasks)
 
     valid = [s for s in results if s]
-    mesaj = "📊 **GÜNCEL AL-SAT-STOP SİNYALLERİ**\n\n"
+    mesaj = "📊 **GÜÇLÜ AL-SAT & HACİM SİNYALLERİ**\n\n"
     bulundu = False
 
     for s in valid:
-        # FİLTRE: Yükseliş trendinde olan ve Boğa piyasası onaylı hisseler
+        # FİLTRE: Trend Yukarı + Boğa + (Hacim veya BoS Kırılımı)
         if s['fiyat'] > s['ema_200'] and s['st_trend'] == "🟢 BOĞA":
             bulundu = True
+            hacim_notu = "🔥 **YÜKSEK HACİM / LOT GİRİŞİ!**" if s['hacim_uyari'] else "Normal Hacim"
             mesaj += (
                 f"💎 **#{s['kod']}**\n"
-                f"✅ **Giriş (Al):** `{s['fiyat']}`\n"
-                f"🎯 **Hedef (Sat):** `{s['hedef']}` (+%{s['kar_oran']})\n"
-                f"🛑 **Stop-Loss:** `{s['stop']}`\n"
-                f"📈 Durum: {s['st_trend']} | RSI: {s['rsi']}\n"
-                f"{'🔥 BoS KIRILIMI VAR!' if s['bos'] else '—'}\n\n"
+                f"✅ **Al:** `{s['fiyat']}` | {hacim_notu}\n"
+                f"🎯 **Hedef:** `{s['hedef']}` (+%{s['kar_oran']})\n"
+                f"🛑 **Stop:** `{s['stop']}`\n"
+                f"📈 Trend: {s['st_trend']} | RSI: {s['rsi']}\n"
+                f"{'🚀 YAPI KIRILIMI (BoS)!' if s['bos'] else ''}\n\n"
             )
-            
             if len(mesaj) > 3500:
                 await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
                 mesaj = ""
 
     if not bulundu:
-        mesaj = "⚠️ Şu an güvenli alım bölgesinde (EMA 200 üstü) hisse bulunamadı."
+        mesaj = "⚠️ Şu an kriterlere uyan hacimli ve trendi güçlü hisse bulunamadı."
     
     await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
 
 async def manuel_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🔄 Tarama başlatılıyor...")
     await sinyal_tara(context)
 
 if __name__ == '__main__':
