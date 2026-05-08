@@ -23,8 +23,18 @@ def run_web():
 
 # --- AYARLAR ---
 MY_CHAT_ID = 1033571271
-HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "TUPRS", "FROTO", "KCHOL",
-                 "TCELL", "PETKM", "SISE", "AKBNK", "HALKB", "SAHOL", "VAKBN", "PGSUS"]
+HISSE_LISTESI = [
+    # Ana Kağıtlar (BIST 30)
+    "THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "TUPRS", "FROTO", "KCHOL",
+    "TCELL", "PETKM", "SISE", "AKBNK", "SAHOL", "YKBNK", "PGSUS", "ARCLK", "EKGYO", "KOZAL",
+    
+    # Enerji & Sanayi (Hızlı Hareket Edenler)
+    "ASTOR", "KONTR", "YEOTK", "SMRTG", "ENJSA", "HEKTS", "OYAKC", "TOASO", "DOAS", "DOHOL",
+    
+    # Teknoloji & Diğer (Momentum Kağıtları)
+    "MIPAZ", "REEDR", "SDTTR", "ALARK", "MIATK", "GUBRF", "ZOREN", "BRSAN", "CIMSA", "VESTL"
+]
+
 
 def get_stock_data(ticker):
     try:
