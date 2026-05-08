@@ -23,17 +23,23 @@ def run_web():
 
 # --- AYARLAR ---
 MY_CHAT_ID = 1033571271
-HISSE_LISTESI = [
-    # Ana Kağıtlar (BIST 30)
+HHISSE_LISTESI = [
+    # --- YILDIZ PAZAR (En Likitler) ---
     "THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "TUPRS", "FROTO", "KCHOL",
     "TCELL", "PETKM", "SISE", "AKBNK", "SAHOL", "YKBNK", "PGSUS", "ARCLK", "EKGYO", "KOZAL",
-    
-    # Enerji & Sanayi (Hızlı Hareket Edenler)
     "ASTOR", "KONTR", "YEOTK", "SMRTG", "ENJSA", "HEKTS", "OYAKC", "TOASO", "DOAS", "DOHOL",
+    "ALARK", "MIATK", "GUBRF", "ZOREN", "BRSAN", "CIMSA", "VESTL", "ENKAI", "BEYAZ", "SOKM",
     
-    # Teknoloji & Diğer (Momentum Kağıtları)
-    "MIPAZ", "REEDR", "SDTTR", "ALARK", "MIATK", "GUBRF", "ZOREN", "BRSAN", "CIMSA", "VESTL"
+    # --- ANA PAZAR (Öne Çıkanlar) ---
+    "A1CAP", "BARMA", "ECOGR", "EGPRO", "GEDIK", "GMTAS", "KRDMB", "MOGAN", "NTGAZ", "OYYAT",
+    "PAGYO", "VKGYO", "ADEL", "ADGYO", "AEFES", "AGESA", "AGHOL", "AGROT", "AHGAZ", "AKCNS",
+    "AKFGY", "AKFIS", "AKFYE", "AKGRT", "AKSA", "AKSEN", "AKSGY", "ALBRK", "ALFAS", "ALGYO",
+    "ALTNY", "ANHYT", "ANSGR", "ARASE", "ARDYZ", "ASGYO", "ATAKP", "ATATP", "AVPGY", "AYDEM",
+    
+    # --- DİĞER DİKKAT ÇEKENLER (Hacimli Yan Tahtalar) ---
+    "REEDR", "SDTTR", "MIPAZ", "ZOREN", "EUPWR", "ALVES", "BEYAZ", "CVKMD", "KOPOL", "CWENE"
 ]
+
 
 
 def get_stock_data(ticker):
