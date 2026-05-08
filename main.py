@@ -137,7 +137,7 @@ async def manuel_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 if __name__ == '__main__':
     Thread(target=run_web).start()
-    TOKEN = "7984025004:AAGD1lLv5RGOIAiJ9wbQfaxSS7r6BGLteoA" # Buraya kendi tokenını gir
+    TOKEN = "8027732851:AAFTv0qeU0REVmvjaeCaG8ZkOfmK0ENjiJc" # Buraya kendi tokenını gir
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler('start', start_cmd))
