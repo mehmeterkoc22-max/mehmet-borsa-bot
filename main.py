@@ -2,6 +2,7 @@ import os
 import asyncio
 import logging
 import yfinance as yf
+import pandas as pd
 from flask import Flask
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
@@ -22,66 +23,71 @@ def run_web():
 # --- AYARLAR ---
 MY_CHAT_ID = 1033571271
 
-HISSE_LISTESI = ["THYAO","GARAN","ISCTR","EREGL","BIMAS","ASELS","SASA","TUPRS","FROTO","KCHOL",
-                 "TCELL","PETKM","SISE","AKBNK","HALKB","SAHOL","VAKBN","YKBNK","ARCLK","TOASO",
-                 "PGSUS","EKGYO","ODAS","HEKTS","GUBRF","KOZAL","VESBE"]
+HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "TUPRS", "FROTO", "KCHOL"]
 
 def get_stock_data(ticker):
     try:
         symbol = f"{ticker}.IS"
-        df = yf.download(symbol, period="8d", interval="30m", progress=False, auto_adjust=True, timeout=10)
+        df = yf.download(symbol, period="10d", interval="30m", 
+                        progress=False, auto_adjust=True, timeout=15)
         
-        if df.empty or len(df) < 30:
+        if df.empty or len(df) < 40:
+            logging.warning(f"{ticker} → Yetersiz veri")
             return None
 
         if isinstance(df.columns, pd.MultiIndex):
             df = df.droplevel(0, axis=1)
 
-        close = df['Close']
+        close = df['Close'].dropna()
+
+        if len(close) < 40:
+            return None
+
+        # RSI Hesaplaması (Daha Güvenli)
         delta = close.diff()
-        gain = delta.where(delta > 0, 0).rolling(14).mean()
-        loss = -delta.where(delta < 0, 0).rolling(14).mean()
-        rsi = 100 - (100 / (1 + gain/loss))
+        gain = delta.where(delta > 0, 0).rolling(window=14, min_periods=14).mean()
+        loss = -delta.where(delta < 0, 0).rolling(window=14, min_periods=14).mean()
+        
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+        
+        current_rsi = round(float(rsi.iloc[-1]), 1) if not pd.isna(rsi.iloc[-1]) else 50.0
 
         return {
             "kod": ticker,
             "fiyat": round(float(close.iloc[-1]), 2),
-            "rsi": round(float(rsi.iloc[-1]), 1)
+            "rsi": current_rsi
         }
-    except:
+    except Exception as e:
+        logging.error(f"{ticker} → Hata: {e}")
         return None
 
 async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(chat_id=MY_CHAT_ID, text="📡 Tüm BIST taranıyor...")
+    await context.bot.send_message(chat_id=MY_CHAT_ID, text="📡 BIST taranıyor...")
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=8) as executor:
         loop = asyncio.get_event_loop()
         tasks = [loop.run_in_executor(executor, get_stock_data, kod) for kod in HISSE_LISTESI]
         results = await asyncio.gather(*tasks)
 
     valid = [s for s in results if s]
-    valid.sort(key=lambda x: x['rsi'])   # En düşük RSI en üstte
+    valid.sort(key=lambda x: x['rsi'])
 
-    mesaj = "📊 **BIST - EN DÜŞÜK RSI HİSSELER**\n\n"
+    mesaj = "📊 **BIST RSI TARAMASI**\n\n"
 
-    for i, s in enumerate(valid, 1):
-        if s['rsi'] <= 50:
-            mesaj += f"🚀 {i:2}. **#{s['kod']}** → RSI: **{s['rsi']}** | Fiyat: **{s['fiyat']}**\n"
-        elif s['rsi'] <= 60:
-            mesaj += f"🔥 {i:2}. **#{s['kod']}** → RSI: **{s['rsi']}** | Fiyat: **{s['fiyat']}**\n"
-        elif s['rsi'] <= 70:
-            mesaj += f"🟡 {i:2}. #{s['kod']} → RSI: **{s['rsi']}**\n"
+    for s in valid:
+        if s['rsi'] <= 60:
+            mesaj += f"🔥 **#{s['kod']}** → RSI: **{s['rsi']}** | Fiyat: **{s['fiyat']}**\n"
         else:
-            mesaj += f"📊 {i:2}. #{s['kod']} → RSI: {s['rsi']}\n"
+            mesaj += f"📊 #{s['kod']} → RSI: {s['rsi']}\n"
 
     en_dusuk = valid[0]['rsi'] if valid else 0
-    mesaj += f"\n✅ **Tarama Tamamlandı**\n"
-    mesaj += f"**En düşük RSI: {en_dusuk}**"
+    mesaj += f"\n✅ **Tarama Tamamlandı**\n**En düşük RSI: {en_dusuk}**"
 
     await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
 
 async def manuel_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔄 En düşük RSI'lı hisseler taranıyor...")
+    await update.message.reply_text("🔄 Tarama başlatılıyor...")
     await sinyal_tara(context)
 
 # --- BAŞLAT ---
