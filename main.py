@@ -22,9 +22,9 @@ def run_web():
 # --- AYARLAR ---
 MY_CHAT_ID = 1033571271
 
-# Daha az hisse ile test ediyoruz (sonra artırırız)
 HISSE_LISTESI = ["THYAO","GARAN","ISCTR","EREGL","BIMAS","ASELS","SASA","TUPRS","FROTO","KCHOL",
-                 "TCELL","PETKM","SISE","AKBNK","HALKB","SAHOL","VAKBN","ARCLK","TOASO","PGSUS"]
+                 "TCELL","PETKM","SISE","AKBNK","HALKB","SAHOL","VAKBN","YKBNK","ARCLK","TOASO",
+                 "PGSUS","EKGYO","ODAS","HEKTS","GUBRF","KOZAL","VESBE"]
 
 def get_stock_data(ticker):
     try:
@@ -60,26 +60,28 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
         results = await asyncio.gather(*tasks)
 
     valid = [s for s in results if s]
-    valid.sort(key=lambda x: x['rsi'])  # En düşük RSI en üstte
+    valid.sort(key=lambda x: x['rsi'])   # En düşük RSI en üstte
 
-    mesaj = "📊 **BIST RSI TARAMASI (Tüm Hisseler)**\n\n"
-    sinyal_sayisi = 0
+    mesaj = "📊 **BIST - EN DÜŞÜK RSI HİSSELER**\n\n"
 
-    for s in valid:
-        rsi = s['rsi']
-        if rsi <= 65:   # Çok gevşek
-            sinyal_sayisi += 1
-            mesaj += f"🔥 **#{s['kod']}** → RSI: **{rsi}** | Fiyat: **{s['fiyat']}**\n"
+    for i, s in enumerate(valid, 1):
+        if s['rsi'] <= 50:
+            mesaj += f"🚀 {i:2}. **#{s['kod']}** → RSI: **{s['rsi']}** | Fiyat: **{s['fiyat']}**\n"
+        elif s['rsi'] <= 60:
+            mesaj += f"🔥 {i:2}. **#{s['kod']}** → RSI: **{s['rsi']}** | Fiyat: **{s['fiyat']}**\n"
+        elif s['rsi'] <= 70:
+            mesaj += f"🟡 {i:2}. #{s['kod']} → RSI: **{s['rsi']}**\n"
         else:
-            mesaj += f"📊 #{s['kod']} → RSI: {rsi}\n"
+            mesaj += f"📊 {i:2}. #{s['kod']} → RSI: {s['rsi']}\n"
 
-    mesaj += f"\n✅ **Tarama Tamamlandı**\nToplam taranan: **{len(valid)}**\n"
-    mesaj += f"**Potansiyel sinyal (RSI ≤ 65): {sinyal_sayisi}**"
+    en_dusuk = valid[0]['rsi'] if valid else 0
+    mesaj += f"\n✅ **Tarama Tamamlandı**\n"
+    mesaj += f"**En düşük RSI: {en_dusuk}**"
 
     await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
 
 async def manuel_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔄 Tarama başlatılıyor...")
+    await update.message.reply_text("🔄 En düşük RSI'lı hisseler taranıyor...")
     await sinyal_tara(context)
 
 # --- BAŞLAT ---
