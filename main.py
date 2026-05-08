@@ -23,16 +23,17 @@ def run_web():
 # --- AYARLAR ---
 MY_CHAT_ID = 1033571271
 
-HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "TUPRS", "FROTO", "KCHOL"]
+HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "TUPRS", "FROTO", "KCHOL", 
+                 "TCELL", "PETKM", "SISE", "AKBNK", "HALKB"]
 
 def get_stock_data(ticker):
     try:
         symbol = f"{ticker}.IS"
-        df = yf.download(symbol, period="10d", interval="30m", 
+        df = yf.download(symbol, period="12d", interval="30m", 
                         progress=False, auto_adjust=True, timeout=15)
         
-        if df.empty or len(df) < 40:
-            logging.warning(f"{ticker} → Yetersiz veri")
+        if df.empty or len(df) < 50:
+            logging.warning(f"{ticker} → Yetersiz veri ({len(df)})")
             return None
 
         if isinstance(df.columns, pd.MultiIndex):
@@ -43,15 +44,22 @@ def get_stock_data(ticker):
         if len(close) < 40:
             return None
 
-        # RSI Hesaplaması (Daha Güvenli)
+        # Daha Güvenli RSI Hesaplaması
         delta = close.diff()
-        gain = delta.where(delta > 0, 0).rolling(window=14, min_periods=14).mean()
-        loss = -delta.where(delta < 0, 0).rolling(window=14, min_periods=14).mean()
+        gain = delta.where(delta > 0, 0)
+        loss = -delta.where(delta < 0, 0)
+
+        avg_gain = gain.rolling(window=14, min_periods=1).mean()
+        avg_loss = loss.rolling(window=14, min_periods=1).mean()
+
+        rs = avg_gain / avg_loss
+        rsi_series = 100 - (100 / (1 + rs))
         
-        rs = gain / loss
-        rsi = 100 - (100 / (1 + rs))
+        current_rsi = round(float(rsi_series.iloc[-1]), 1)
         
-        current_rsi = round(float(rsi.iloc[-1]), 1) if not pd.isna(rsi.iloc[-1]) else 50.0
+        # RSI 0 veya NaN ise düzelt
+        if pd.isna(current_rsi) or current_rsi == 0:
+            current_rsi = 50.0
 
         return {
             "kod": ticker,
@@ -76,7 +84,7 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
     mesaj = "📊 **BIST RSI TARAMASI**\n\n"
 
     for s in valid:
-        if s['rsi'] <= 60:
+        if s['rsi'] <= 65:
             mesaj += f"🔥 **#{s['kod']}** → RSI: **{s['rsi']}** | Fiyat: **{s['fiyat']}**\n"
         else:
             mesaj += f"📊 #{s['kod']} → RSI: {s['rsi']}\n"
