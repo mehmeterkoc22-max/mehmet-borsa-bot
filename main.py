@@ -2,8 +2,6 @@ import os
 import asyncio
 import logging
 import yfinance as yf
-import pandas as pd
-from datetime import datetime
 from flask import Flask
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
@@ -24,10 +22,10 @@ def run_web():
 # --- AYARLAR ---
 MY_CHAT_ID = 1033571271
 
-HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", 
-                 "TUPRS", "FROTO", "KCHOL", "TCELL", "PETKM"]
+# Daha fazla hisse
+HISSE_LISTESI = ["THYAO","GARAN","ISCTR","EREGL","BIMAS","ASELS","SASA","TUPRS","FROTO","KCHOL",
+                 "TCELL","PETKM","SISE","AKBNK","HALKB","SAHOL","VAKBN","YKBNK","ARCLK","TOASO"]
 
-# --- VERİ ÇEKME ---
 def get_stock_data(ticker):
     try:
         symbol = f"{ticker}.IS"
@@ -54,37 +52,38 @@ def get_stock_data(ticker):
     except:
         return None
 
-# --- ANA TARAMA ---
 async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=MY_CHAT_ID, text="📡 Tarama başladı...")
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=10) as executor:
         loop = asyncio.get_event_loop()
         tasks = [loop.run_in_executor(executor, get_stock_data, kod) for kod in HISSE_LISTESI]
         results = await asyncio.gather(*tasks)
 
-    mesaj = "📊 **BIST RSI TARAMASI**\n\n"
-    dusuk_rsi = 0
+    valid = [s for s in results if s]
+    valid.sort(key=lambda x: x['rsi'])
 
-    for s in results:
-        if not s:
-            continue
+    mesaj = "📊 **BIST RSI TARAMASI**\n\n"
+    dusuk = 0
+    takip = 0
+
+    for s in valid:
         rsi = s['rsi']
-        if rsi <= 50:
-            dusuk_rsi += 1
-            mesaj += f"🚀 **#{s['kod']}** → RSI: **{rsi}** | Fiyat: **{s['fiyat']}**\n"
-        elif rsi <= 60:
-            mesaj += f"🔶 #{s['kod']} → RSI: **{rsi}**\n"
+        if rsi <= 55:
+            dusuk += 1
+            mesaj += f"🚀 **#{s['kod']}** → RSI: **{rsi}** | Fiyat: **{s['fiyat']} TL**\n"
+        elif rsi <= 68:                       # ← Eşiği yükselttik
+            takip += 1
+            mesaj += f"🔥 **#{s['kod']}** → RSI: **{rsi}** | Fiyat: **{s['fiyat']} TL**\n"
         else:
             mesaj += f"📊 #{s['kod']} → RSI: {rsi}\n"
 
     mesaj += f"\n✅ **Tarama Tamamlandı**\n"
-    mesaj += f"**RSI ≤ 50 : {dusuk_rsi} hisse**\n"
-    mesaj += f"**RSI ≤ 60 : Potansiyel takip**"
+    mesaj += f"🚀 RSI ≤ 55 : **{dusuk}** hisse\n"
+    mesaj += f"🔥 RSI ≤ 68 : **{takip}** hisse (Takip Listesi)"
 
     await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
 
-# --- KOMUT ---
 async def manuel_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔄 Tarama başlatılıyor...")
     await sinyal_tara(context)
