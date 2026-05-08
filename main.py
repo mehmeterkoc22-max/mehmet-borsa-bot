@@ -31,9 +31,11 @@ def run_web():
 MY_CHAT_ID = 1033571271
 gonderilen_hisseler = {}
 
-HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "AKBNK", "SAHOL", "ASELS", "TUPRS", "SASA"]  # ← TEST İÇİN AZALTILDI
+# Test için az hisse (istediğin zaman hepsini aç)
+HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "AKBNK", "SAHOL", "ASELS", 
+                 "TUPRS", "SASA", "FROTO", "KCHOL", "TCELL", "PETKM", "SISE"]
 
-# --- VERİ ÇEKME FONKSİYONU (Daha Hızlı + Daha Güvenli) ---
+# --- VERİ ÇEKME ---
 def get_stock_data(ticker):
     try:
         symbol = f"{ticker}.IS"
@@ -73,50 +75,60 @@ def get_stock_data(ticker):
 # --- ANA TARAMA ---
 async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
     global gonderilen_hisseler
-    tr_tz = pytz.timezone('Europe/Istanbul')
-    simdi = datetime.now(tr_tz)
-    su_an_ts = simdi.timestamp()
+    logging.info("🔍 Tarama başladı...")
 
-    logging.info(f"🔍 Tarama Başladı - {len(HISSE_LISTESI)} hisse")
+    await context.bot.send_message(chat_id=MY_CHAT_ID, text="📡 Veriler çekiliyor, lütfen bekleyin...")
 
-    await context.bot.send_message(chat_id=MY_CHAT_ID, text="📡 Veriler çekiliyor...")
-
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=10) as executor:
         loop = asyncio.get_event_loop()
         tasks = [loop.run_in_executor(executor, get_stock_data, kod) for kod in HISSE_LISTESI]
         results = await asyncio.gather(*tasks)
 
     bulunan = 0
+    sinyal_listesi = []
+
     for s in results:
-        if not s:
+        if not s: 
             continue
 
-        logging.info(f"✅ {s['kod']} | RSI: {s['rsi']:.1f} | MACD: {s['macd']:.4f}")
+        rsi = s['rsi']
+        macd_cross = s['macd'] > s['macd_sig']
 
-        # Test için çok daha geniş koşul
-        if s['rsi'] < 55 and s['macd'] > s['macd_sig'] and s['rsi'] > s['rsi_prev']:
+        # Genişletilmiş test koşulu
+        if (rsi < 48 and s['rsi_prev'] < rsi) or (rsi < 40) or (macd_cross and rsi < 52):
             bulunan += 1
-            gonderilen_hisseler[s['kod']] = su_an_ts
+            gonderilen_hisseler[s['kod']] = datetime.now().timestamp()
 
             buf = io.BytesIO()
             mpf.plot(s['df'].tail(50), type='candle', style='charles', savefig=buf, figsize=(10,6))
             buf.seek(0)
 
+            mesaj = (
+                f"🚀 **#{s['kod']} - SİNYAL**\n"
+                f"💰 Fiyat: **{s['fiyat']:.2f}** TL\n"
+                f"📊 RSI: **{rsi:.1f}** (önceki: {s['rsi_prev']:.1f})\n"
+                f"📈 MACD: {'🟢' if macd_cross else '🔴'}"
+            )
+
             keyboard = [[InlineKeyboardButton("📈 TradingView", 
                         url=f"https://www.tradingview.com/symbols/BIST-{s['kod']}/")]]
 
-            mesaj = f"🚀 **#{s['kod']}** DİPTEN DÖNÜŞ\n💰 Fiyat: **{s['fiyat']:.2f} TL**\n📊 RSI: **{s['rsi']:.1f}**"
-
             await context.bot.send_photo(chat_id=MY_CHAT_ID, photo=buf, caption=mesaj,
                                        reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.6)
 
-    await context.bot.send_message(chat_id=MY_CHAT_ID, 
-                                 text=f"✅ Tarama tamamlandı!\nBulunan sinyal: **{bulunan}**")
+        else:
+            # Sadece log için
+            logging.info(f"{s['kod']:6} RSI: {rsi:.1f} | MACD Cross: {macd_cross}")
 
-# --- KOMUTLAR ---
+    await context.bot.send_message(
+        chat_id=MY_CHAT_ID, 
+        text=f"✅ **Tarama Tamamlandı**\n\nBulunan sinyal: **{bulunan}**\nToplam taranan: {len([r for r in results if r])}"
+    )
+
+# --- KOMUT ---
 async def manuel_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("⚡ Tüm BIST hisseleri taranıyor, lütfen bekleyin...")
+    await update.message.reply_text("⚡ Tarama başlatılıyor...")
     gonderilen_hisseler.clear()
     await sinyal_tara(context)
 
