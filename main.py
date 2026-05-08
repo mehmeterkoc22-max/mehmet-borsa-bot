@@ -24,7 +24,8 @@ def run_web():
 # --- AYARLAR ---
 MY_CHAT_ID = 1033571271
 
-HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "TUPRS", "FROTO", "KCHOL"]
+HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", 
+                 "TUPRS", "FROTO", "KCHOL", "TCELL", "PETKM"]
 
 # --- VERİ ÇEKME ---
 def get_stock_data(ticker):
@@ -45,11 +46,6 @@ def get_stock_data(ticker):
         loss = -delta.where(delta < 0, 0).rolling(14).mean()
         df['RSI'] = 100 - (100 / (1 + gain/loss))
 
-        exp1 = close.ewm(span=12, adjust=False).mean()
-        exp2 = close.ewm(span=26, adjust=False).mean()
-        df['MACD'] = exp1 - exp2
-        df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
-
         return {
             "kod": ticker,
             "fiyat": round(float(close.iloc[-1]), 2),
@@ -58,7 +54,7 @@ def get_stock_data(ticker):
     except:
         return None
 
-# --- ANA TARAMA (TEK MESAJ) ---
+# --- ANA TARAMA ---
 async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=MY_CHAT_ID, text="📡 Tarama başladı...")
 
@@ -67,21 +63,25 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
         tasks = [loop.run_in_executor(executor, get_stock_data, kod) for kod in HISSE_LISTESI]
         results = await asyncio.gather(*tasks)
 
-    mesaj = "📊 **BIST HİSSE RSI TARAMASI**\n\n"
-    bulunan = 0
+    mesaj = "📊 **BIST RSI TARAMASI**\n\n"
+    dusuk_rsi = 0
 
     for s in results:
         if not s:
             continue
         rsi = s['rsi']
-        if rsi < 55:
-            bulunan += 1
+        if rsi <= 50:
+            dusuk_rsi += 1
             mesaj += f"🚀 **#{s['kod']}** → RSI: **{rsi}** | Fiyat: **{s['fiyat']}**\n"
+        elif rsi <= 60:
+            mesaj += f"🔶 #{s['kod']} → RSI: **{rsi}**\n"
         else:
             mesaj += f"📊 #{s['kod']} → RSI: {rsi}\n"
 
-    mesaj += f"\n✅ **Tarama Tamamlandı**\n**Bulunan potansiyel sinyal: {bulunan}**"
-    
+    mesaj += f"\n✅ **Tarama Tamamlandı**\n"
+    mesaj += f"**RSI ≤ 50 : {dusuk_rsi} hisse**\n"
+    mesaj += f"**RSI ≤ 60 : Potansiyel takip**"
+
     await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
 
 # --- KOMUT ---
