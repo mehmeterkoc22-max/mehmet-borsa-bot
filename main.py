@@ -28,7 +28,6 @@ def run_web():
 
 # --- AYARLAR ---
 MY_CHAT_ID = 1033571271
-gonderilen_hisseler = {}
 
 HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "TUPRS", "FROTO", "KCHOL"]
 
@@ -36,8 +35,7 @@ HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "
 def get_stock_data(ticker):
     try:
         symbol = f"{ticker}.IS"
-        df = yf.download(symbol, period="10d", interval="30m", 
-                        progress=False, auto_adjust=True, timeout=15)
+        df = yf.download(symbol, period="10d", interval="30m", progress=False, auto_adjust=True, timeout=15)
         
         if df.empty or len(df) < 30:
             return None
@@ -71,8 +69,7 @@ def get_stock_data(ticker):
 
 # --- ANA TARAMA ---
 async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
-    global gonderilen_hisseler
-    await context.bot.send_message(chat_id=MY_CHAT_ID, text="📡 Tarama başlatıldı...")
+    await context.bot.send_message(chat_id=MY_CHAT_ID, text="📡 Tarama başladı...")
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         loop = asyncio.get_event_loop()
@@ -85,23 +82,25 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
             continue
 
         rsi = s['rsi']
+        rsi_prev = s['rsi_prev']
         macd_guc = s['macd'] > s['macd_sig']
-        rsi_yukseliyor = s['rsi'] > s['rsi_prev']
 
-        # === ÇOK DAHA GEVŞEK KOŞUL ===
-        if (rsi < 50 and rsi_yukseliyor and macd_guc) or (rsi < 45):
+        # Log için RSI değerlerini göster
+        logging.info(f"{s['kod']:6} | RSI: {rsi:.1f} (prev: {rsi_prev:.1f}) | MACD Cross: {macd_guc}")
+
+        # Şu anki en gevşek koşul
+        if rsi < 55 and rsi > rsi_prev and macd_guc:
             bulunan += 1
-            gonderilen_hisseler[s['kod']] = datetime.now().timestamp()
 
             buf = io.BytesIO()
             mpf.plot(s['df'].tail(50), type='candle', style='charles', savefig=buf, figsize=(10,6))
             buf.seek(0)
 
             mesaj = (
-                f"🚀 **#{s['kod']} - POTANSİYEL SİNYAL**\n\n"
+                f"🚀 **#{s['kod']} - SİNYAL**\n\n"
                 f"💰 Fiyat: **{s['fiyat']:.2f}** TL\n"
-                f"📊 RSI: **{rsi:.1f}** (önceki: {s['rsi_prev']:.1f})\n"
-                f"📈 MACD: {'🟢 Güçlü' if macd_guc else '🔴 Zayıf'}"
+                f"📊 RSI: **{rsi:.1f}** ↑ (önceki: {rsi_prev:.1f})\n"
+                f"📈 MACD: Güçlü 🟢"
             )
 
             keyboard = [[InlineKeyboardButton("📈 TradingView", 
@@ -116,7 +115,7 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
         text=f"✅ **Tarama Tamamlandı**\n\nBulunan sinyal: **{bulunan}**"
     )
 
-# --- KOMUTLAR ---
+# --- KOMUT ---
 async def manuel_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔄 Tarama başlatılıyor...")
     await sinyal_tara(context)
@@ -131,5 +130,5 @@ if __name__ == '__main__':
     app.job_queue.run_repeating(sinyal_tara, interval=600, first=10)
     app.add_handler(CommandHandler('analiz', manuel_analiz))
 
-    logging.info("✅ Bot başlatıldı...")
+    logging.info("Bot başlatıldı...")
     app.run_polling()
