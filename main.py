@@ -5,7 +5,6 @@ import logging
 import yfinance as yf
 import pandas as pd
 import mplfinance as mpf
-import pytz
 import matplotlib
 from datetime import datetime
 from flask import Flask
@@ -29,24 +28,39 @@ def run_web():
 
 # --- AYARLAR ---
 MY_CHAT_ID = 1033571271
-gonderilen_hisseler = {}
 
-# Test için az hisse (istediğin zaman hepsini aç)
-HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "AKBNK", "SAHOL", "ASELS", 
-                 "TUPRS", "SASA", "FROTO", "KCHOL", "TCELL", "PETKM", "SISE"]
+HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "TUPRS"]
 
-# --- VERİ ÇEKME ---
+# --- GELİŞTİRİLMİŞ VERİ ÇEKME ---
 def get_stock_data(ticker):
     try:
         symbol = f"{ticker}.IS"
-        df = yf.download(symbol, period="5d", interval="15m", 
-                        progress=False, auto_adjust=True, timeout=10)
         
-        if df.empty or len(df) < 40:
+        # Farklı parametre denemesi
+        df = yf.download(
+            symbol,
+            period="10d",
+            interval="30m",
+            progress=False,
+            auto_adjust=True,
+            timeout=15,
+            group_by='ticker'
+        )
+        
+        if df is None or df.empty:
+            # Alternatif yöntem dene
+            df = yf.Ticker(symbol).history(period="10d", interval="30m")
+        
+        if df is None or df.empty or len(df) < 25:
+            logging.warning(f"{ticker} → Veri boş")
             return None
 
+        # Sütun düzeltme
         if isinstance(df.columns, pd.MultiIndex):
             df = df.droplevel(0, axis=1)
+            
+        if 'Close' not in df.columns:
+            return None
 
         close = df['Close']
         delta = close.diff()
@@ -69,67 +83,54 @@ def get_stock_data(ticker):
             "df": df
         }
     except Exception as e:
-        logging.error(f"{ticker} HATA: {e}")
+        logging.error(f"{ticker} → HATA: {str(e)[:80]}")
         return None
 
-# --- ANA TARAMA ---
+# --- TARAMA ---
 async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
-    global gonderilen_hisseler
-    logging.info("🔍 Tarama başladı...")
+    await context.bot.send_message(chat_id=MY_CHAT_ID, text="📡 Veriler çekiliyor...")
 
-    await context.bot.send_message(chat_id=MY_CHAT_ID, text="📡 Veriler çekiliyor, lütfen bekleyin...")
-
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=6) as executor:
         loop = asyncio.get_event_loop()
         tasks = [loop.run_in_executor(executor, get_stock_data, kod) for kod in HISSE_LISTESI]
         results = await asyncio.gather(*tasks)
 
+    basarili = len([r for r in results if r])
     bulunan = 0
-    sinyal_listesi = []
 
     for s in results:
-        if not s: 
+        if not s:
             continue
 
-        rsi = s['rsi']
-        macd_cross = s['macd'] > s['macd_sig']
+        bulunan += 1
+        logging.info(f"✅ {s['kod']} | RSI: {s['rsi']:.1f}")
 
-        # Genişletilmiş test koşulu
-        if (rsi < 48 and s['rsi_prev'] < rsi) or (rsi < 40) or (macd_cross and rsi < 52):
-            bulunan += 1
-            gonderilen_hisseler[s['kod']] = datetime.now().timestamp()
+        buf = io.BytesIO()
+        mpf.plot(s['df'].tail(40), type='candle', style='charles', savefig=buf, figsize=(10,6))
+        buf.seek(0)
 
-            buf = io.BytesIO()
-            mpf.plot(s['df'].tail(50), type='candle', style='charles', savefig=buf, figsize=(10,6))
-            buf.seek(0)
+        mesaj = (
+            f"🚀 **#{s['kod']}**\n"
+            f"💰 Fiyat: **{s['fiyat']:.2f}** TL\n"
+            f"📊 RSI: **{s['rsi']:.1f}**\n"
+            f"📈 MACD: Güçlü"
+        )
 
-            mesaj = (
-                f"🚀 **#{s['kod']} - SİNYAL**\n"
-                f"💰 Fiyat: **{s['fiyat']:.2f}** TL\n"
-                f"📊 RSI: **{rsi:.1f}** (önceki: {s['rsi_prev']:.1f})\n"
-                f"📈 MACD: {'🟢' if macd_cross else '🔴'}"
-            )
+        keyboard = [[InlineKeyboardButton("📈 TradingView", 
+                    url=f"https://www.tradingview.com/symbols/BIST-{s['kod']}/")]]
 
-            keyboard = [[InlineKeyboardButton("📈 TradingView", 
-                        url=f"https://www.tradingview.com/symbols/BIST-{s['kod']}/")]]
-
-            await context.bot.send_photo(chat_id=MY_CHAT_ID, photo=buf, caption=mesaj,
-                                       reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-            await asyncio.sleep(0.6)
-
-        else:
-            # Sadece log için
-            logging.info(f"{s['kod']:6} RSI: {rsi:.1f} | MACD Cross: {macd_cross}")
+        await context.bot.send_photo(chat_id=MY_CHAT_ID, photo=buf, caption=mesaj,
+                                   reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await asyncio.sleep(0.8)
 
     await context.bot.send_message(
         chat_id=MY_CHAT_ID, 
-        text=f"✅ **Tarama Tamamlandı**\n\nBulunan sinyal: **{bulunan}**\nToplam taranan: {len([r for r in results if r])}"
+        text=f"✅ **Tarama Tamamlandı**\n\nBaşarılı hisse: **{basarili}**\nSinyal: **{bulunan}**"
     )
 
 # --- KOMUT ---
 async def manuel_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("⚡ Tarama başlatılıyor...")
-    gonderilen_hisseler.clear()
+    await update.message.reply_text("🔄 Tarama başlatılıyor (8 hisse)...")
     await sinyal_tara(context)
 
 # --- BAŞLAT ---
@@ -139,7 +140,7 @@ if __name__ == '__main__':
     TOKEN = os.environ.get("TELEGRAM_TOKEN", "7984025004:AAGD1lLv5RGOIAiJ9wbQfaxSS7r6BGLteoA")
     app = ApplicationBuilder().token(TOKEN).build()
 
-    app.job_queue.run_repeating(sinyal_tara, interval=600, first=10)
+    app.job_queue.run_repeating(sinyal_tara, interval=900, first=5)
     app.add_handler(CommandHandler('analiz', manuel_analiz))
 
     logging.info("Bot başlatıldı...")
