@@ -1,19 +1,14 @@
 import os
-import io
 import asyncio
 import logging
 import yfinance as yf
 import pandas as pd
-import mplfinance as mpf
-import matplotlib
 from datetime import datetime
 from flask import Flask
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
-
-matplotlib.use('Agg')
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 
@@ -29,7 +24,7 @@ def run_web():
 # --- AYARLAR ---
 MY_CHAT_ID = 1033571271
 
-HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "TUPRS"]
+HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "TUPRS", "FROTO", "KCHOL"]
 
 # --- VERİ ÇEKME ---
 def get_stock_data(ticker):
@@ -61,22 +56,22 @@ def get_stock_data(ticker):
             "rsi": float(df['RSI'].iloc[-1]),
             "rsi_prev": float(df['RSI'].iloc[-2]),
             "macd": float(df['MACD'].iloc[-1]),
-            "macd_sig": float(df['Signal'].iloc[-1]),
-            "df": df
+            "macd_sig": float(df['Signal'].iloc[-1])
         }
     except Exception as e:
         logging.error(f"{ticker} HATA: {str(e)[:80]}")
         return None
 
-# --- ANA TARAMA (KOŞUL KALDIRILDI) ---
+# --- ANA TARAMA (SADECE METİN) ---
 async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(chat_id=MY_CHAT_ID, text="📡 Tarama başladı...\nHer hisse için grafik geliyor.")
+    await context.bot.send_message(chat_id=MY_CHAT_ID, text="📡 Tarama başladı...")
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         loop = asyncio.get_event_loop()
         tasks = [loop.run_in_executor(executor, get_stock_data, kod) for kod in HISSE_LISTESI]
         results = await asyncio.gather(*tasks)
 
+    bulunan = 0
     for s in results:
         if not s: 
             continue
@@ -84,30 +79,32 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
         rsi = s['rsi']
         macd_guc = s['macd'] > s['macd_sig']
 
-        buf = io.BytesIO()
-        mpf.plot(s['df'].tail(50), type='candle', style='charles', savefig=buf, figsize=(10,6))
-        buf.seek(0)
+        # Koşul çok gevşek
+        if rsi < 55 and s['rsi'] > s['rsi_prev']:
+            bulunan += 1
+            mesaj = (
+                f"🚀 **#{s['kod']} - SİNYAL**\n"
+                f"💰 Fiyat: **{s['fiyat']:.2f}** TL\n"
+                f"📊 RSI: **{rsi:.1f}** (önceki: {s['rsi_prev']:.1f})\n"
+                f"📈 MACD: {'🟢' if macd_guc else '🔴'}"
+            )
+            await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
 
-        mesaj = (
-            f"📊 **#{s['kod']}**\n\n"
-            f"💰 Fiyat: **{s['fiyat']:.2f}** TL\n"
-            f"📈 RSI: **{rsi:.1f}** (önceki: {s['rsi_prev']:.1f})\n"
-            f"📉 MACD: {'🟢 Üstte' if macd_guc else '🔴 Altta'}"
-        )
+        else:
+            # Tüm hisselerin RSI'ını görmek için
+            await context.bot.send_message(
+                chat_id=MY_CHAT_ID, 
+                text=f"📊 **#{s['kod']}** → RSI: **{rsi:.1f}**"
+            )
 
-        keyboard = [[InlineKeyboardButton("📈 TradingView", 
-                    url=f"https://www.tradingview.com/symbols/BIST-{s['kod']}/")]]
-
-        await context.bot.send_photo(chat_id=MY_CHAT_ID, photo=buf, caption=mesaj,
-                                   reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        await asyncio.sleep(0.8)
-
-    await context.bot.send_message(chat_id=MY_CHAT_ID, 
-                                 text="✅ **Tarama Tamamlandı**\nTüm hisseler gösterildi.")
+    await context.bot.send_message(
+        chat_id=MY_CHAT_ID, 
+        text=f"✅ **Tarama Tamamlandı**\nBulunan sinyal: **{bulunan}**"
+    )
 
 # --- KOMUT ---
 async def manuel_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔄 Tüm hisseler taranıyor...")
+    await update.message.reply_text("🔄 Tarama başlatılıyor...")
     await sinyal_tara(context)
 
 # --- BAŞLAT ---
