@@ -30,7 +30,6 @@ def run_web():
 MY_CHAT_ID = 1033571271
 gonderilen_hisseler = {}
 
-# Daha fazla hisse ekleyebilirsin
 HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "TUPRS", "FROTO", "KCHOL"]
 
 # --- VERİ ÇEKME ---
@@ -87,11 +86,10 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
 
         rsi = s['rsi']
         macd_guc = s['macd'] > s['macd_sig']
+        rsi_yukseliyor = s['rsi'] > s['rsi_prev']
 
-        # 🔥 GERÇEK SİNYAL KOŞULU (Daha Mantıklı)
-        if (rsi < 42 and s['rsi_prev'] < rsi and macd_guc) or \
-           (35 < rsi < 48 and macd_guc and s['rsi_prev'] < rsi):
-            
+        # === ÇOK DAHA GEVŞEK KOŞUL ===
+        if (rsi < 50 and rsi_yukseliyor and macd_guc) or (rsi < 45):
             bulunan += 1
             gonderilen_hisseler[s['kod']] = datetime.now().timestamp()
 
@@ -99,15 +97,11 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
             mpf.plot(s['df'].tail(50), type='candle', style='charles', savefig=buf, figsize=(10,6))
             buf.seek(0)
 
-            atr = (s['df']['High'] - s['df']['Low']).rolling(14).mean().iloc[-1]
-
             mesaj = (
-                f"🚀 **#{s['kod']} - DİPTEN DÖNÜŞ**\n\n"
+                f"🚀 **#{s['kod']} - POTANSİYEL SİNYAL**\n\n"
                 f"💰 Fiyat: **{s['fiyat']:.2f}** TL\n"
-                f"📊 RSI: **{rsi:.1f}** ← {s['rsi_prev']:.1f}\n"
-                f"📈 MACD: Güçlü 🟢\n\n"
-                f"🎯 Hedef: {(s['fiyat'] + atr*2.5):.2f} TL\n"
-                f"🛑 Stop: {(s['fiyat'] - atr*1.5):.2f} TL"
+                f"📊 RSI: **{rsi:.1f}** (önceki: {s['rsi_prev']:.1f})\n"
+                f"📈 MACD: {'🟢 Güçlü' if macd_guc else '🔴 Zayıf'}"
             )
 
             keyboard = [[InlineKeyboardButton("📈 TradingView", 
@@ -124,7 +118,7 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
 
 # --- KOMUTLAR ---
 async def manuel_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔄 Tam tarama başlatılıyor...")
+    await update.message.reply_text("🔄 Tarama başlatılıyor...")
     await sinyal_tara(context)
 
 # --- BAŞLAT ---
@@ -134,8 +128,8 @@ if __name__ == '__main__':
     TOKEN = os.environ.get("TELEGRAM_TOKEN", "7984025004:AAGD1lLv5RGOIAiJ9wbQfaxSS7r6BGLteoA")
     app = ApplicationBuilder().token(TOKEN).build()
 
-    app.job_queue.run_repeating(sinyal_tara, interval=600, first=10)  # 10 dakikada bir
+    app.job_queue.run_repeating(sinyal_tara, interval=600, first=10)
     app.add_handler(CommandHandler('analiz', manuel_analiz))
 
-    logging.info("✅ Bot başarıyla başlatıldı...")
+    logging.info("✅ Bot başlatıldı...")
     app.run_polling()
