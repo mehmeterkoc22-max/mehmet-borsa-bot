@@ -24,16 +24,14 @@ def run_web():
 MY_CHAT_ID = 1033571271
 
 HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "TUPRS", "FROTO", "KCHOL", 
-                 "TCELL", "PETKM", "SISE", "AKBNK", "HALKB"]
+                 "TCELL", "PETKM", "SISE", "AKBNK", "HALKB", "SAHOL"]
 
 def get_stock_data(ticker):
     try:
         symbol = f"{ticker}.IS"
-        df = yf.download(symbol, period="12d", interval="30m", 
-                        progress=False, auto_adjust=True, timeout=15)
+        df = yf.download(symbol, period="15d", interval="30m", progress=False, auto_adjust=True, timeout=15)
         
-        if df.empty or len(df) < 50:
-            logging.warning(f"{ticker} → Yetersiz veri ({len(df)})")
+        if df.empty or len(df) < 30:
             return None
 
         if isinstance(df.columns, pd.MultiIndex):
@@ -41,33 +39,30 @@ def get_stock_data(ticker):
 
         close = df['Close'].dropna()
 
-        if len(close) < 40:
+        if len(close) < 30:
             return None
 
-        # Daha Güvenli RSI Hesaplaması
+        # Daha sağlam RSI hesaplama
         delta = close.diff()
-        gain = delta.where(delta > 0, 0)
-        loss = -delta.where(delta < 0, 0)
-
-        avg_gain = gain.rolling(window=14, min_periods=1).mean()
-        avg_loss = loss.rolling(window=14, min_periods=1).mean()
-
-        rs = avg_gain / avg_loss
-        rsi_series = 100 - (100 / (1 + rs))
+        gain = delta.clip(lower=0).rolling(window=14, min_periods=1).mean()
+        loss = -delta.clip(upper=0).rolling(window=14, min_periods=1).mean()
         
-        current_rsi = round(float(rsi_series.iloc[-1]), 1)
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
         
-        # RSI 0 veya NaN ise düzelt
-        if pd.isna(current_rsi) or current_rsi == 0:
+        current_rsi = float(rsi.iloc[-1])
+        
+        # 0 veya NaN kontrolü
+        if pd.isna(current_rsi) or current_rsi <= 0 or current_rsi > 100:
             current_rsi = 50.0
 
         return {
             "kod": ticker,
             "fiyat": round(float(close.iloc[-1]), 2),
-            "rsi": current_rsi
+            "rsi": round(current_rsi, 1)
         }
     except Exception as e:
-        logging.error(f"{ticker} → Hata: {e}")
+        logging.error(f"{ticker} Hata: {e}")
         return None
 
 async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
@@ -85,7 +80,7 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
 
     for s in valid:
         if s['rsi'] <= 65:
-            mesaj += f"🔥 **#{s['kod']}** → RSI: **{s['rsi']}** | Fiyat: **{s['fiyat']}**\n"
+            mesaj += f"🔥 **#{s['kod']}** → RSI: **{s['rsi']}** | Fiyat: **{s['fiyat']} TL**\n"
         else:
             mesaj += f"📊 #{s['kod']} → RSI: {s['rsi']}\n"
 
