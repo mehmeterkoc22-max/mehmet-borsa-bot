@@ -5,7 +5,7 @@ import yfinance as yf
 from flask import Flask
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -22,44 +22,31 @@ def run_web():
 # --- AYARLAR ---
 MY_CHAT_ID = 1033571271
 
-# Tüm BIST Hisseleri
-HISSE_LISTESI = ["THYAO","GARAN","ISCTR","EREGL","BIMAS","ASELS","SASA","TUPRS","FROTO","KCHOL","TCELL","PETKM",
-                 "SISE","AKBNK","HALKB","SAHOL","VAKBN","YKBNK","ARCLK","TOASO","PGSUS","EKGYO","ODAS","HEKTS"]  # Test için önce az tuttuk, sonra genişleteceğiz
+# Daha az hisse ile test ediyoruz (sonra artırırız)
+HISSE_LISTESI = ["THYAO","GARAN","ISCTR","EREGL","BIMAS","ASELS","SASA","TUPRS","FROTO","KCHOL",
+                 "TCELL","PETKM","SISE","AKBNK","HALKB","SAHOL","VAKBN","ARCLK","TOASO","PGSUS"]
 
 def get_stock_data(ticker):
     try:
         symbol = f"{ticker}.IS"
         df = yf.download(symbol, period="8d", interval="30m", progress=False, auto_adjust=True, timeout=10)
         
-        if df.empty or len(df) < 35:
+        if df.empty or len(df) < 30:
             return None
 
         if isinstance(df.columns, pd.MultiIndex):
             df = df.droplevel(0, axis=1)
 
         close = df['Close']
-        high = df['High']
-        low = df['Low']
-
         delta = close.diff()
         gain = delta.where(delta > 0, 0).rolling(14).mean()
         loss = -delta.where(delta < 0, 0).rolling(14).mean()
         rsi = 100 - (100 / (1 + gain/loss))
 
-        exp1 = close.ewm(span=12, adjust=False).mean()
-        exp2 = close.ewm(span=26, adjust=False).mean()
-        macd = exp1 - exp2
-        signal = macd.ewm(span=9, adjust=False).mean()
-
-        tr = pd.concat([(high - low), abs(high - close.shift()), abs(low - close.shift())], axis=1).max(axis=1)
-        atr = tr.rolling(14).mean().iloc[-1]
-
         return {
             "kod": ticker,
             "fiyat": round(float(close.iloc[-1]), 2),
-            "rsi": round(float(rsi.iloc[-1]), 1),
-            "macd_guc": macd.iloc[-1] > signal.iloc[-1],
-            "atr": round(atr, 2)
+            "rsi": round(float(rsi.iloc[-1]), 1)
         }
     except:
         return None
@@ -73,40 +60,26 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
         results = await asyncio.gather(*tasks)
 
     valid = [s for s in results if s]
-    valid.sort(key=lambda x: x['rsi'])   # En düşük RSI üstte
+    valid.sort(key=lambda x: x['rsi'])  # En düşük RSI en üstte
 
-    bulunan = 0
-    mesaj = "🚀 **BIST SİNYAL TARAMASI**\n\n"
+    mesaj = "📊 **BIST RSI TARAMASI (Tüm Hisseler)**\n\n"
+    sinyal_sayisi = 0
 
     for s in valid:
         rsi = s['rsi']
-        
-        # Gevşetilmiş koşul
-        if rsi <= 62 and s['macd_guc']:
-            bulunan += 1
-            giris = s['fiyat']
-            hedef = round(giris + (s['atr'] * 2.5), 2)
-            stop = round(giris - (s['atr'] * 1.5), 2)
+        if rsi <= 65:   # Çok gevşek
+            sinyal_sayisi += 1
+            mesaj += f"🔥 **#{s['kod']}** → RSI: **{rsi}** | Fiyat: **{s['fiyat']}**\n"
+        else:
+            mesaj += f"📊 #{s['kod']} → RSI: {rsi}\n"
 
-            mesaj += (
-                f"🚀 **#{s['kod']}** 🔥\n"
-                f"💰 Giriş: **{giris}**\n"
-                f"🎯 Hedef: **{hedef}**\n"
-                f"🛑 Stop: **{stop}**\n"
-                f"📊 RSI: **{rsi}**\n\n"
-            )
-
-    # En düşük RSI'lı 8 hisseyi de göster
-    mesaj += "📉 **EN DÜŞÜK RSI HİSSELER**\n"
-    for s in valid[:8]:
-        mesaj += f"#{s['kod']} → RSI: **{s['rsi']}**\n"
-
-    mesaj += f"\n✅ **Tarama Tamamlandı**\nBulunan sinyal: **{bulunan}**"
+    mesaj += f"\n✅ **Tarama Tamamlandı**\nToplam taranan: **{len(valid)}**\n"
+    mesaj += f"**Potansiyel sinyal (RSI ≤ 65): {sinyal_sayisi}**"
 
     await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
 
 async def manuel_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔄 Tüm BIST taranıyor, lütfen bekleyin...")
+    await update.message.reply_text("🔄 Tarama başlatılıyor...")
     await sinyal_tara(context)
 
 # --- BAŞLAT ---
