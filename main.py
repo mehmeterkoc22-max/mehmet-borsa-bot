@@ -44,46 +44,54 @@ def get_stock_data(ticker):
         close = df['Close']
         high = df['High']
         low = df['Low']
-        volume = df['Volume']
-
-        # 1. EMA 200
-        df['EMA_200'] = close.ewm(span=200, adjust=False).mean()
         
-        # 2. RSI
+        fiyat = round(float(close.iloc[-1]), 2)
+
+        # 1. EMA 200 (Ana Trend)
+        ema_200 = close.ewm(span=200, adjust=False).mean().iloc[-1]
+        
+        # 2. RSI (14)
         delta = close.diff()
         gain = (delta.where(delta > 0, 0)).rolling(14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        df['RSI'] = 100 - (100 / (1 + (gain / (loss + 1e-9))))
+        rsi = 100 - (100 / (1 + (gain / (loss + 1e-9))))
 
-        # 3. Supertrend (Basit Versiyon)
-        atr = (high - low).rolling(7).mean()
-        df['ST_Lower'] = ((high + low) / 2) - (3 * atr)
-        is_st_up = close.iloc[-1] > df['ST_Lower'].iloc[-1]
+        # 3. ATR Hesaplama (Stop Loss için oynaklık ölçümü)
+        tr = pd.concat([high - low, abs(high - close.shift()), abs(low - close.shift())], axis=1).max(axis=1)
+        atr = tr.rolling(14).mean().iloc[-1]
 
-        # 4. MACD
-        exp1 = close.ewm(span=12, adjust=False).mean()
-        exp2 = close.ewm(span=26, adjust=False).mean()
-        macd = exp1 - exp2
-        signal = macd.ewm(span=9, adjust=False).mean()
+        # 4. Supertrend
+        st_lower = ((high + low) / 2) - (3 * tr.rolling(7).mean())
+        is_st_up = fiyat > st_lower.iloc[-1]
 
-        # 5. SMC - BoS (Market Yapısı Kırılımı)
+        # 5. SMC - BoS
         recent_high = high.rolling(20).max().iloc[-2]
-        is_bos_up = close.iloc[-1] > recent_high
+        is_bos_up = fiyat > recent_high
+
+        # --- DİNAMİK STRATEJİ HESAPLAMA ---
+        # Stop-Loss: ATR'nin 1.5 katı kadar aşağısı
+        stop_loss = round(fiyat - (atr * 1.5), 2)
+        # Hedef: Riskin 2 katı (Örn: 1 TL risk edip 2 TL kazanmak)
+        risk_miktari = fiyat - stop_loss
+        hedef_fiyat = round(fiyat + (risk_miktari * 2), 2)
+        potansiyel_kar = round(((hedef_fiyat - fiyat) / fiyat) * 100, 1)
 
         return {
             "kod": ticker,
-            "fiyat": round(float(close.iloc[-1]), 2),
-            "rsi": round(float(df['RSI'].iloc[-1]), 1),
-            "ema_200": round(float(df['EMA_200'].iloc[-1]), 2),
+            "fiyat": fiyat,
+            "rsi": round(float(rsi.iloc[-1]), 1),
+            "ema_200": round(float(ema_200), 2),
             "st_trend": "🟢 BOĞA" if is_st_up else "🔴 AYI",
-            "macd_ok": bool(macd.iloc[-1] > signal.iloc[-1]),
-            "bos": is_bos_up
+            "bos": is_bos_up,
+            "stop": stop_loss,
+            "hedef": hedef_fiyat,
+            "kar_oran": potansiyel_kar
         }
     except Exception as e:
         return None
 
 async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(chat_id=MY_CHAT_ID, text="📡 Profesyonel tarama başladı...")
+    await context.bot.send_message(chat_id=MY_CHAT_ID, text="📡 Strateji bazlı tarama başladı...")
     
     with ThreadPoolExecutor(max_workers=30) as executor:
         loop = asyncio.get_event_loop()
@@ -91,26 +99,28 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
         results = await asyncio.gather(*tasks)
 
     valid = [s for s in results if s]
-    mesaj = "🚀 **GÜÇLÜ TEKNİK SİNYALLER**\n\n"
-    
-    for s in valid:
-        # ANA STRATEJİ FİLTRESİ:
-        # Fiyat EMA 200 üstünde olacak + Supertrend Yeşil olacak + (RSI < 40 veya BoS kırılımı)
-        if s['fiyat'] > s['ema_200'] and s['st_trend'] == "🟢 BOĞA":
-            if s['rsi'] < 45 or s['bos']:
-                mesaj += (
-                    f"💎 **#{s['kod']}**\n"
-                    f"💰 Fiyat: **{s['fiyat']}**\n"
-                    f"📈 Trend: {s['st_trend']} (EMA 200 Üstü)\n"
-                    f"📊 RSI: {s['rsi']} | MACD: {'🟢' if s['macd_ok'] else '🔴'}\n"
-                    f"{'🔥 YAPI KIRILDI (BoS)!' if s['bos'] else '📉 Tepki Bölgesinde'}\n\n"
-                )
-                if len(mesaj) > 3500:
-                    await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
-                    mesaj = ""
+    mesaj = "📊 **GÜNCEL AL-SAT-STOP SİNYALLERİ**\n\n"
+    bulundu = False
 
-    if not mesaj or mesaj == "🚀 **GÜÇLÜ TEKNİK SİNYALLER**\n\n":
-        mesaj = "⚠️ Şu an kriterlere tam uyan (EMA 200 üstü ve Boğa) hisse bulunamadı."
+    for s in valid:
+        # FİLTRE: Yükseliş trendinde olan ve Boğa piyasası onaylı hisseler
+        if s['fiyat'] > s['ema_200'] and s['st_trend'] == "🟢 BOĞA":
+            bulundu = True
+            mesaj += (
+                f"💎 **#{s['kod']}**\n"
+                f"✅ **Giriş (Al):** `{s['fiyat']}`\n"
+                f"🎯 **Hedef (Sat):** `{s['hedef']}` (+%{s['kar_oran']})\n"
+                f"🛑 **Stop-Loss:** `{s['stop']}`\n"
+                f"📈 Durum: {s['st_trend']} | RSI: {s['rsi']}\n"
+                f"{'🔥 BoS KIRILIMI VAR!' if s['bos'] else '—'}\n\n"
+            )
+            
+            if len(mesaj) > 3500:
+                await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
+                mesaj = ""
+
+    if not bulundu:
+        mesaj = "⚠️ Şu an güvenli alım bölgesinde (EMA 200 üstü) hisse bulunamadı."
     
     await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
 
@@ -122,4 +132,5 @@ if __name__ == '__main__':
     TOKEN = "8027732851:AAFTv0qeU0REVmvjaeCaG8ZkOfmK0ENjiJc"
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler('analiz', manuel_analiz))
+    app.job_queue.run_repeating(sinyal_tara, interval=1800, first=10)
     app.run_polling()
