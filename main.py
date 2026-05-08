@@ -28,39 +28,23 @@ def run_web():
 
 # --- AYARLAR ---
 MY_CHAT_ID = 1033571271
+gonderilen_hisseler = {}
 
-HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "TUPRS"]
+# Daha fazla hisse ekleyebilirsin
+HISSE_LISTESI = ["THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "TUPRS", "FROTO", "KCHOL"]
 
-# --- GELİŞTİRİLMİŞ VERİ ÇEKME ---
+# --- VERİ ÇEKME ---
 def get_stock_data(ticker):
     try:
         symbol = f"{ticker}.IS"
+        df = yf.download(symbol, period="10d", interval="30m", 
+                        progress=False, auto_adjust=True, timeout=15)
         
-        # Farklı parametre denemesi
-        df = yf.download(
-            symbol,
-            period="10d",
-            interval="30m",
-            progress=False,
-            auto_adjust=True,
-            timeout=15,
-            group_by='ticker'
-        )
-        
-        if df is None or df.empty:
-            # Alternatif yöntem dene
-            df = yf.Ticker(symbol).history(period="10d", interval="30m")
-        
-        if df is None or df.empty or len(df) < 25:
-            logging.warning(f"{ticker} → Veri boş")
+        if df.empty or len(df) < 30:
             return None
 
-        # Sütun düzeltme
         if isinstance(df.columns, pd.MultiIndex):
             df = df.droplevel(0, axis=1)
-            
-        if 'Close' not in df.columns:
-            return None
 
         close = df['Close']
         delta = close.diff()
@@ -83,54 +67,64 @@ def get_stock_data(ticker):
             "df": df
         }
     except Exception as e:
-        logging.error(f"{ticker} → HATA: {str(e)[:80]}")
+        logging.error(f"{ticker} HATA: {str(e)[:80]}")
         return None
 
-# --- TARAMA ---
+# --- ANA TARAMA ---
 async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(chat_id=MY_CHAT_ID, text="📡 Veriler çekiliyor...")
+    global gonderilen_hisseler
+    await context.bot.send_message(chat_id=MY_CHAT_ID, text="📡 Tarama başlatıldı...")
 
-    with ThreadPoolExecutor(max_workers=6) as executor:
+    with ThreadPoolExecutor(max_workers=8) as executor:
         loop = asyncio.get_event_loop()
         tasks = [loop.run_in_executor(executor, get_stock_data, kod) for kod in HISSE_LISTESI]
         results = await asyncio.gather(*tasks)
 
-    basarili = len([r for r in results if r])
     bulunan = 0
-
     for s in results:
-        if not s:
+        if not s: 
             continue
 
-        bulunan += 1
-        logging.info(f"✅ {s['kod']} | RSI: {s['rsi']:.1f}")
+        rsi = s['rsi']
+        macd_guc = s['macd'] > s['macd_sig']
 
-        buf = io.BytesIO()
-        mpf.plot(s['df'].tail(40), type='candle', style='charles', savefig=buf, figsize=(10,6))
-        buf.seek(0)
+        # 🔥 GERÇEK SİNYAL KOŞULU (Daha Mantıklı)
+        if (rsi < 42 and s['rsi_prev'] < rsi and macd_guc) or \
+           (35 < rsi < 48 and macd_guc and s['rsi_prev'] < rsi):
+            
+            bulunan += 1
+            gonderilen_hisseler[s['kod']] = datetime.now().timestamp()
 
-        mesaj = (
-            f"🚀 **#{s['kod']}**\n"
-            f"💰 Fiyat: **{s['fiyat']:.2f}** TL\n"
-            f"📊 RSI: **{s['rsi']:.1f}**\n"
-            f"📈 MACD: Güçlü"
-        )
+            buf = io.BytesIO()
+            mpf.plot(s['df'].tail(50), type='candle', style='charles', savefig=buf, figsize=(10,6))
+            buf.seek(0)
 
-        keyboard = [[InlineKeyboardButton("📈 TradingView", 
-                    url=f"https://www.tradingview.com/symbols/BIST-{s['kod']}/")]]
+            atr = (s['df']['High'] - s['df']['Low']).rolling(14).mean().iloc[-1]
 
-        await context.bot.send_photo(chat_id=MY_CHAT_ID, photo=buf, caption=mesaj,
-                                   reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        await asyncio.sleep(0.8)
+            mesaj = (
+                f"🚀 **#{s['kod']} - DİPTEN DÖNÜŞ**\n\n"
+                f"💰 Fiyat: **{s['fiyat']:.2f}** TL\n"
+                f"📊 RSI: **{rsi:.1f}** ← {s['rsi_prev']:.1f}\n"
+                f"📈 MACD: Güçlü 🟢\n\n"
+                f"🎯 Hedef: {(s['fiyat'] + atr*2.5):.2f} TL\n"
+                f"🛑 Stop: {(s['fiyat'] - atr*1.5):.2f} TL"
+            )
+
+            keyboard = [[InlineKeyboardButton("📈 TradingView", 
+                        url=f"https://www.tradingview.com/symbols/BIST-{s['kod']}/")]]
+
+            await context.bot.send_photo(chat_id=MY_CHAT_ID, photo=buf, caption=mesaj,
+                                       reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            await asyncio.sleep(0.7)
 
     await context.bot.send_message(
         chat_id=MY_CHAT_ID, 
-        text=f"✅ **Tarama Tamamlandı**\n\nBaşarılı hisse: **{basarili}**\nSinyal: **{bulunan}**"
+        text=f"✅ **Tarama Tamamlandı**\n\nBulunan sinyal: **{bulunan}**"
     )
 
-# --- KOMUT ---
+# --- KOMUTLAR ---
 async def manuel_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔄 Tarama başlatılıyor (8 hisse)...")
+    await update.message.reply_text("🔄 Tam tarama başlatılıyor...")
     await sinyal_tara(context)
 
 # --- BAŞLAT ---
@@ -140,8 +134,8 @@ if __name__ == '__main__':
     TOKEN = os.environ.get("TELEGRAM_TOKEN", "7984025004:AAGD1lLv5RGOIAiJ9wbQfaxSS7r6BGLteoA")
     app = ApplicationBuilder().token(TOKEN).build()
 
-    app.job_queue.run_repeating(sinyal_tara, interval=900, first=5)
+    app.job_queue.run_repeating(sinyal_tara, interval=600, first=10)  # 10 dakikada bir
     app.add_handler(CommandHandler('analiz', manuel_analiz))
 
-    logging.info("Bot başlatıldı...")
+    logging.info("✅ Bot başarıyla başlatıldı...")
     app.run_polling()
