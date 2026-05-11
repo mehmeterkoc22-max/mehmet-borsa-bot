@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import yfinance as yf
 import pandas as pd
+import numpy as np
 
 from flask import Flask
 from telegram import Update
@@ -18,7 +19,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# ====================== FLASK WEB SERVER ======================
+# ====================== FLASK ======================
 app_web = Flask('')
 
 @app_web.route('/')
@@ -44,13 +45,22 @@ HISSE_LISTESI = [
     "REEDR", "SDTTR", "MIPAZ", "EUPWR", "ALVES", "CWENE", "ADEL", "AGROT", "ALFAS", "ARDYZ"
 ]
 
-# ====================== VERİ ÇEKME + PIVOT ======================
+# ====================== RSI HESAPLAMA ======================
+def calculate_rsi(series, period=14):
+    delta = series.diff()
+    gain = delta.where(delta > 0, 0).rolling(window=period).mean()
+    loss = -delta.where(delta < 0, 0).rolling(window=period).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+# ====================== VERİ ÇEKME + PIVOT + HIDDEN BULLISH ======================
 def get_stock_data(ticker):
     try:
         symbol = f"{ticker}.IS"
-        df = yf.download(symbol, period="10d", interval="1h", progress=False, auto_adjust=True)
+        df = yf.download(symbol, period="15d", interval="1h", progress=False, auto_adjust=True)
         
-        if df.empty or len(df) < 50:
+        if df.empty or len(df) < 60:
             return None
             
         if isinstance(df.columns, pd.MultiIndex):
@@ -64,18 +74,11 @@ def get_stock_data(ticker):
         fiyat = round(float(close.iloc[-1]), 2)
 
         # ====================== PIVOT NOKTALARI ======================
-        # Günlük pivot için veriyi günlük'e çevir
-        df_daily = df.resample('1D').agg({
-            'High': 'max',
-            'Low': 'min',
-            'Close': 'last'
-        }).dropna()
-
+        df_daily = df.resample('1D').agg({'High': 'max', 'Low': 'min', 'Close': 'last'}).dropna()
         if len(df_daily) < 2:
             return None
 
-        prev = df_daily.iloc[-2]  # Önceki tamamlanmış gün
-
+        prev = df_daily.iloc[-2]
         pp = (prev['High'] + prev['Low'] + prev['Close']) / 3
         r1 = 2 * pp - prev['Low']
         s1 = 2 * pp - prev['High']
@@ -84,19 +87,34 @@ def get_stock_data(ticker):
         r3 = pp + 2 * (prev['High'] - prev['Low'])
         s3 = pp - 2 * (prev['High'] - prev['Low'])
 
+        # ====================== RSI ve HIDDEN BULLISH DIVERGENCE ======================
+        rsi = calculate_rsi(close, 14)
+        current_rsi = round(rsi.iloc[-1], 1) if not rsi.empty else None
+
+        hidden_bullish_div = False
+
+        # Son 12 mum içinde swing low tespiti (basit yöntem)
+        if len(close) > 30 and not rsi.empty:
+            for i in range(len(close) - 20, len(close) - 5):
+                # Fiyat Higher Low + RSI Lower Low
+                if (close.iloc[i] < close.iloc[i-5] and close.iloc[i] < close.iloc[i+5] and  # local low
+                    rsi.iloc[i] < rsi.iloc[i-8] and rsi.iloc[i] < rsi.iloc[i+5]):          # RSI daha düşük
+                    
+                    # Son low ile karşılaştır
+                    if (close.iloc[-1] > close.iloc[i] and rsi.iloc[-1] > rsi.iloc[i]):
+                        hidden_bullish_div = True
+                        break
+
         # ====================== DİĞER GÖSTERGELER ======================
         ema_200 = close.ewm(span=200, adjust=False).mean().iloc[-1]
-        
         tr = pd.concat([high - low, abs(high - close.shift()), abs(low - close.shift())], axis=1).max(axis=1)
         atr = tr.rolling(14).mean().iloc[-1]
 
-        # Agresif Strateji
         stop = round(fiyat - (atr * 1.5), 2)
         risk = fiyat - stop
         hedef = round(fiyat + (risk * 4), 2)
         kar_potansiyeli = round(((hedef - fiyat) / fiyat) * 100, 1)
 
-        # Ek Koşullar
         avg_vol = volume.rolling(20).mean().iloc[-1]
         hacim_ok = volume.iloc[-1] > (avg_vol * 1.5)
         st_up = fiyat > (((high + low) / 2) - (3 * tr.rolling(7).mean())).iloc[-1]
@@ -112,7 +130,6 @@ def get_stock_data(ticker):
             "st_trend": st_up,
             "ema_200": ema_200,
             "bos": bos,
-            # Pivot Bilgileri
             "pivot": round(pp, 2),
             "r1": round(r1, 2),
             "r2": round(r2, 2),
@@ -120,7 +137,9 @@ def get_stock_data(ticker):
             "s1": round(s1, 2),
             "s2": round(s2, 2),
             "s3": round(s3, 2),
-            "pivot_yukari": fiyat > pp
+            "pivot_yukari": fiyat > pp,
+            "hidden_bullish_div": hidden_bullish_div,
+            "rsi": current_rsi
         }
     except Exception as e:
         logging.error(f"{ticker} verisi çekilirken hata: {e}")
@@ -134,25 +153,27 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
         results = await asyncio.gather(*tasks)
 
     valid = [s for s in results if s]
-    mesaj = "🎯 **AGRESİF TREND SİNYALLERİ (+ Pivot & S/D)**\n\n"
+    mesaj = "🎯 **AGRESİF TREND SİNYALLERİ (+ Pivot + Hidden Bullish)**\n\n"
     bulundu = False
 
     for s in valid:
-        if s['fiyat'] > s['ema_200'] and s['st_trend'] and (s['hacim'] or s['bos']):
-            bulundu = True
+        if (s['fiyat'] > s['ema_200'] and 
+            s['st_trend'] and 
+            (s['hacim'] or s['bos']) and 
+            s['hidden_bullish_div']):                     # ← Hidden Bullish Filtre
             
-            pivot_durum = "🟢 **Pivot Üstü (Bullish)**" if s['pivot_yukari'] else "🔴 Pivot Altı"
+            bulundu = True
+            pivot_durum = "🟢 **Pivot Üstü**" if s['pivot_yukari'] else "🔴 Pivot Altı"
             ara_uyari = "⚠️ *%5 kârda stopu girişe çek!* " if s['kar'] >= 8 else ""
 
             mesaj += (
-                f"🚀 **#{s['kod']}**\n"
+                f"🚀 **#{s['kod']}** 🔥 **Hidden Bullish**\n"
                 f"💰 **Giriş:** `{s['fiyat']}`\n"
-                f"🎯 **Büyük Hedef:** `{s['hedef']}` (+%{s['kar']})\n"
-                f"🛑 **Zarar Kes:** `{s['stop']}`\n"
-                f"⚡ Durum: {'🔥 HACİM PATLAMASI' if s['hacim'] else 'Normal'}\n"
+                f"🎯 **Hedef:** `{s['hedef']}` (+%{s['kar']})\n"
+                f"🛑 **Stop:** `{s['stop']}`\n"
                 f"📍 **Pivot:** `{s['pivot']}` | {pivot_durum}\n"
-                f"🔼 **Direnç** → R1: `{s['r1']}` | R2: `{s['r2']}` | R3: `{s['r3']}`\n"
-                f"🔽 **Destek** → S1: `{s['s1']}` | S2: `{s['s2']}` | S3: `{s['s3']}`\n"
+                f"⚡ Durum: {'🔥 HACİM PATLAMASI' if s['hacim'] else 'Normal'}\n"
+                f"📊 RSI: `{s['rsi']}`\n"
                 f"{ara_uyari}\n\n"
             )
 
@@ -163,34 +184,28 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
     if bulundu:
         await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
     else:
-        logging.info("Bu taramada uygun sinyal bulunamadı.")
+        logging.info("Bu taramada Hidden Bullish sinyali bulunamadı.")
 
 # ====================== KEEP ALIVE ======================
 async def keep_alive(context: ContextTypes.DEFAULT_TYPE):
-    try:
-        current_time = datetime.now().strftime("%H:%M:%S")
-        logging.info(f"🟢 Keep-Alive Ping - {current_time}")
-    except Exception as e:
-        logging.error(f"Keep-alive hatası: {e}")
+    logging.info(f"🟢 Keep-Alive Ping - {datetime.now().strftime('%H:%M:%S')}")
 
 # ====================== MANUEL KOMUT ======================
 async def manuel_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔄 Agresif tarama + Pivot analizi başlatılıyor...")
+    await update.message.reply_text("🔄 Hidden Bullish Divergence taraması başlatılıyor...")
     await sinyal_tara(context)
 
-# ====================== ANA BAŞLANGIÇ ======================
+# ====================== BAŞLAT ======================
 if __name__ == '__main__':
     Thread(target=run_web, daemon=True).start()
 
     TOKEN = "8027732851:AAFTv0qeU0REVmvjaeCaG8ZkOfmK0ENjiJc"
-    
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler('analiz', manuel_analiz))
 
-    # Job'lar
-    app.job_queue.run_repeating(sinyal_tara, interval=300, first=10)   # 5 dakikada bir
-    app.job_queue.run_repeating(keep_alive, interval=240, first=30)    # Keep-alive
+    app.job_queue.run_repeating(sinyal_tara, interval=300, first=10)
+    app.job_queue.run_repeating(keep_alive, interval=240, first=30)
 
-    logging.info("🤖 Bot Pivot'lu olarak başarıyla başlatıldı!")
+    logging.info("🤖 Bot Hidden Bullish Divergence ile başlatıldı!")
     app.run_polling()
