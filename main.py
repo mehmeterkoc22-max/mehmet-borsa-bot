@@ -16,12 +16,16 @@ from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# ====================== FLASK ======================
+# ====================== FLASK (Cron Job İçin Temizlendi) ======================
 app_web = Flask('')
 
 @app_web.route('/')
 def home():
-    return f"✅ Bot Aktif! - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", 200
+    return "Bot Aktif", 200
+
+@app_web.route('/ping')
+def ping():
+    return "PONG", 200                    # ← Cron-job için en temiz hali
 
 def run_web():
     port = int(os.environ.get("PORT", 8080))
@@ -64,7 +68,6 @@ def get_stock_data(ticker):
             volume = df['Volume']
             fiyat = round(float(close.iloc[-1]), 2)
 
-            # Pivot
             df_daily = df.resample('1D').agg({'High': 'max', 'Low': 'min', 'Close': 'last'}).dropna()
             if len(df_daily) < 2:
                 return None
@@ -109,7 +112,7 @@ def get_stock_data(ticker):
                 time.sleep(3)
     return None
 
-# ====================== SİNYAL TARAMA (GEVŞETİLMİŞ) ======================
+# ====================== SİNYAL TARAMA ======================
 async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE, update=None):
     try:
         if update:
@@ -123,48 +126,43 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE, update=None):
             results = await asyncio.gather(*tasks)
 
         valid = [s for s in results if s]
-        logging.info(f"✅ {len(valid)} hisse verisi çekildi.")
-
         mesaj = "🎯 **AGRESİF TREND SİNYALLERİ**\n\n"
         bulundu = False
-        sinyal_sayisi = 0
 
         for s in valid:
-            # Filtre gevşetildi → Sadece EMA200 üstü + ST Trend yeterli
             if s['fiyat'] > s['ema_200'] and s['st_trend']:
                 bulundu = True
-                sinyal_sayisi += 1
                 pivot_durum = "🟢 Pivot Üstü" if s['pivot_yukari'] else "🔴 Pivot Altı"
-
                 mesaj += (
-                    f"🚀 **#{s['kod']}** #{sinyal_sayisi}\n"
-                    f"💰 **Giriş:** `{s['fiyat']}`\n"
-                    f"🎯 **Hedef:** `{s['hedef']}` (+%{s['kar']})\n"
-                    f"🛑 **Stop:** `{s['stop']}`\n"
-                    f"📊 RSI: `{s['rsi']}` | {'🔥 Hacim Yüksek' if s['hacim'] else 'Normal'}\n"
-                    f"📍 **Pivot:** `{s['pivot']}` | {pivot_durum}\n"
+                    f"🚀 **#{s['kod']}**\n"
+                    f"💰 Giriş: `{s['fiyat']}`\n"
+                    f"🎯 Hedef: `{s['hedef']}` (+%{s['kar']})\n"
+                    f"🛑 Stop: `{s['stop']}`\n"
+                    f"📊 RSI: `{s['rsi']}`\n"
+                    f"📍 Pivot: `{s['pivot']}` | {pivot_durum}\n"
                     f"🔼 R1:`{s['r1']}` R2:`{s['r2']}` R3:`{s['r3']}`\n"
                     f"🔽 S1:`{s['s1']}` S2:`{s['s2']}` S3:`{s['s3']}`\n"
                     f"────────────────────────\n\n"
                 )
-
                 if len(mesaj) > 3800:
                     await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
-                    mesaj = "🎯 **AGRESİF TREND SİNYALLERİ (Devam)**\n\n"
+                    mesaj = ""
 
         if bulundu:
             await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
-            logging.info(f"Toplam {sinyal_sayisi} sinyal gönderildi.")
         else:
             await context.bot.send_message(chat_id=MY_CHAT_ID, text="🔍 Bu taramada sinyal bulunamadı.")
 
     except Exception as e:
         logging.error(f"Tarama hatası: {e}")
-        await context.bot.send_message(chat_id=MY_CHAT_ID, text="❌ Tarama sırasında hata oluştu.")
 
-# ====================== KOMUTLAR ======================
+# ====================== MANUEL KOMUT ======================
 async def manuel_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     asyncio.create_task(sinyal_tara(context, update))
+
+# ====================== KEEP ALIVE ======================
+async def keep_alive(context: ContextTypes.DEFAULT_TYPE):
+    logging.info(f"🟢 Keep-Alive - {datetime.now().strftime('%H:%M:%S')}")
 
 # ====================== BAŞLAT ======================
 if __name__ == '__main__':
@@ -175,7 +173,8 @@ if __name__ == '__main__':
 
     app.add_handler(CommandHandler('analiz', manuel_analiz))
 
-    app.job_queue.run_repeating(lambda c: asyncio.create_task(sinyal_tara(c)), interval=300, first=30)
+    app.job_queue.run_repeating(sinyal_tara, interval=300, first=20)
+    app.job_queue.run_repeating(keep_alive, interval=180, first=10)   # 3 dakikada bir
 
-    logging.info("🤖 Bot Filtre Gevşetilmiş Versiyon ile Başlatıldı")
+    logging.info("🤖 Bot Güncellendi - /ping temizlendi")
     app.run_polling()
