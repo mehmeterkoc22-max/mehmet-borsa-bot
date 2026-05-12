@@ -28,10 +28,21 @@ def run_web():
 # ====================== AYARLAR ======================
 MY_CHAT_ID = 1033571271
 
+# ====================== TÜM BIST HİSSELERİ (Ana + Yıldız Pazar) ======================
 HISSE_LISTESI = [
-    "THYAO", "GARAN", "ISCTR", "EREGL", "BIMAS", "ASELS", "SASA", "TUPRS", "FROTO", "KCHOL",
-    "TCELL", "PETKM", "SISE", "AKBNK", "SAHOL", "YKBNK", "PGSUS", "ARCLK", "EKGYO", "KOZAL",
-    "ASTOR", "KONTR", "HEKTS", "OYAKC", "TOASO", "DOAS", "GUBRF", "VESTL", "ENKAI", "SOKM"
+    # Ana Pazar Popüler + Büyük Hisse Senetleri
+    "THYAO","GARAN","ISCTR","EREGL","BIMAS","ASELS","SASA","TUPRS","FROTO","KCHOL","TCELL","PETKM",
+    "SISE","AKBNK","SAHOL","YKBNK","PGSUS","ARCLK","EKGYO","KOZAL","ASTOR","KONTR","HEKTS","OYAKC",
+    "TOASO","DOAS","GUBRF","VESTL","ENKAI","SOKM","BRSAN","CIMSA","ALARK","ODAS","VESBE","TKFEN",
+    "HALKB","VAKBN","SKBNK","ISMEN","ISDMR","KRDMD","EREGL","KCHOL","SAHOL","TAVHL","TURSG","MIATK",
+    
+    # Yıldız Pazar ve Diğer Önemli Hisseler
+    "GWIND","EUPWR","CWENE","YEOTK","SMRTG","ENJSA","REEDR","SDTTR","MOGAN","ALFAS","ARDYZ","AGROT",
+    "BEYAZ","ALVES","ADEL","GESAN","KONKA","MAVI","LOGO","MPARK","NEURO","OTKAR","SAYAS","TABGD",
+    "ULKER","YUNSA","ZOREN","BIOEN","BOBET","BTCIM","CANTE","CCOLA","DOHOL","ECILC","ECZYT","EGEEN",
+    "ENKAI","FENER","GEDIK","GENIL","GIPTA","HEKTS","HRKET","IPEKE","IZMDC","KAYSE","KLSER","KOLSN",
+    "KORDS","KOZAA","KTLEV","LMKDC","MHRGY","ODAS","PASEU","PEKGY","PTTGY","QUAGR","RALYH","SAYAS",
+    "SKBNK","TABGD","TUKAS","TURSG","ULKER","VAKBN","VESBE","VESTL","YYLGD"
 ]
 
 # ====================== VERİ ÇEKME ======================
@@ -77,14 +88,14 @@ def get_stock_data(ticker):
         avg_vol = volume.rolling(20).mean().iloc[-1]
         hacim_guc = volume.iloc[-1] > (avg_vol * 1.4)
 
-        # ==================== SİNYAL KOŞULU (Daha Sıkı) ====================
+        # ==================== KALİTELİ SİNYAL KOŞULU ====================
         if (fiyat > ema_50 and fiyat > ema_200 and 
-            current_rsi < 48 and current_rsi > 32 and 
+            32 < current_rsi < 48 and 
             macd_guc and hacim_guc):
 
-            stop = round(fiyat - (atr * 1.8), 2)          # Stop biraz daha geniş
+            stop = round(fiyat - (atr * 1.75), 2)
             risk = max(fiyat - stop, 0.01)
-            hedef = round(fiyat + (risk * 3), 2)          # 1:3 Risk/Reward
+            hedef = round(fiyat + (risk * 3), 2)      # 1:3 Risk/Reward
             kar_orani = round(((hedef - fiyat) / fiyat) * 100, 1)
 
             return {
@@ -99,18 +110,18 @@ def get_stock_data(ticker):
         return None
 
     except Exception as e:
-        logging.error(f"{ticker} Hata: {e}")
+        # logging.error(f"{ticker} Hata: {e}")
         return None
 
 # ====================== TARAMA ======================
 async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE, update=None):
     try:
         if update:
-            await update.message.reply_text("🔄 Kaliteli sinyal taraması başladı...")
+            await update.message.reply_text(f"🔄 Tüm BIST ({len(HISSE_LISTESI)} hisse) taranıyor...\nBu işlem 40-60 saniye sürebilir.")
         else:
             await context.bot.send_message(MY_CHAT_ID, "🔄 Otomatik tarama başladı...")
 
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        with ThreadPoolExecutor(max_workers=12) as executor:
             loop = asyncio.get_event_loop()
             tasks = [loop.run_in_executor(executor, get_stock_data, kod) for kod in HISSE_LISTESI]
             results = await asyncio.gather(*tasks)
@@ -121,15 +132,15 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE, update=None):
             await context.bot.send_message(MY_CHAT_ID, "🔍 Bu taramada yeterince güçlü sinyal bulunamadı.")
             return
 
-        mesaj = "🚀 **YÜKSEK KALİTE SİNYAL TARAMASI**\n\n"
+        mesaj = "🚀 **TÜM BIST KALİTE SİNYAL TARAMASI**\n\n"
         for s in valid:
             mesaj += (
                 f"**#{s['kod']}** 🔥\n"
-                f"💰 Giriş: `{s['fiyat']}`\n"
+                f"💰 Giriş: `{s['fiyat']}` TL\n"
                 f"🎯 Hedef: `{s['hedef']}` (+%{s['kar']})\n"
                 f"🛑 Stop: `{s['stop']}`\n"
                 f"📊 RSI: `{s['rsi']}`\n"
-                f"📈 Hacim Güçlü: {'✅' if s['hacim_guc'] else '❌'}\n"
+                f"📈 Hacim: {'✅ Güçlü' if s['hacim_guc'] else '❌'}\n"
                 f"────────────────────────\n\n"
             )
 
@@ -150,7 +161,7 @@ if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
     
     app.add_handler(CommandHandler('analiz', manuel_analiz))
-    app.job_queue.run_repeating(sinyal_tara, interval=1800, first=30)  # 30 dakikada bir (daha az ama kaliteli)
+    app.job_queue.run_repeating(sinyal_tara, interval=1800, first=30)  # 30 dakikada bir
     
-    logging.info("🤖 Bot Geliştirildi - Kaliteli Sinyal Modu Aktif")
+    logging.info(f"🤖 Bot Güncellendi - Tüm BIST ({len(HISSE_LISTESI)} hisse) Aktif")
     app.run_polling()
