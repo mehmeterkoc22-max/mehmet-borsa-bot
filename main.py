@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 import yfinance as yf
 import pandas as pd
 from flask import Flask
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -28,22 +28,21 @@ def run_web():
 # ====================== AYARLAR ======================
 MY_CHAT_ID = 1033571271
 
-# ====================== TÜM BIST HİSSELERİ (Ana + Yıldız Pazar) ======================
+# Tüm BIST Hisseleri (Ana + Yıldız)
 HISSE_LISTESI = [
-    # Ana Pazar Popüler + Büyük Hisse Senetleri
     "THYAO","GARAN","ISCTR","EREGL","BIMAS","ASELS","SASA","TUPRS","FROTO","KCHOL","TCELL","PETKM",
     "SISE","AKBNK","SAHOL","YKBNK","PGSUS","ARCLK","EKGYO","KOZAL","ASTOR","KONTR","HEKTS","OYAKC",
     "TOASO","DOAS","GUBRF","VESTL","ENKAI","SOKM","BRSAN","CIMSA","ALARK","ODAS","VESBE","TKFEN",
-    "HALKB","VAKBN","SKBNK","ISMEN","ISDMR","KRDMD","EREGL","KCHOL","SAHOL","TAVHL","TURSG","MIATK",
-    
-    # Yıldız Pazar ve Diğer Önemli Hisseler
-    "GWIND","EUPWR","CWENE","YEOTK","SMRTG","ENJSA","REEDR","SDTTR","MOGAN","ALFAS","ARDYZ","AGROT",
-    "BEYAZ","ALVES","ADEL","GESAN","KONKA","MAVI","LOGO","MPARK","NEURO","OTKAR","SAYAS","TABGD",
-    "ULKER","YUNSA","ZOREN","BIOEN","BOBET","BTCIM","CANTE","CCOLA","DOHOL","ECILC","ECZYT","EGEEN",
-    "ENKAI","FENER","GEDIK","GENIL","GIPTA","HEKTS","HRKET","IPEKE","IZMDC","KAYSE","KLSER","KOLSN",
-    "KORDS","KOZAA","KTLEV","LMKDC","MHRGY","ODAS","PASEU","PEKGY","PTTGY","QUAGR","RALYH","SAYAS",
-    "SKBNK","TABGD","TUKAS","TURSG","ULKER","VAKBN","VESBE","VESTL","YYLGD"
+    "HALKB","VAKBN","SKBNK","ISMEN","GWIND","EUPWR","CWENE","YEOTK","SMRTG","REEDR","SDTTR","MOGAN",
+    "ALFAS","ARDYZ","AGROT","BEYAZ","ALVES","ADEL","GESAN","MAVI","LOGO","MPARK","SAYAS","TABGD",
+    "ULKER","ZOREN","BIOEN","BTCIM","CANTE","CCOLA","ECILC","ECZYT","ENJSA","FENER","GEDIK","HEKTS"
 ]
+
+# ====================== PARAMETRELER ======================
+RSI_PERIOD = 9
+MACD_FAST = 8
+MACD_SLOW = 17
+MACD_SIGNAL = 9
 
 # ====================== VERİ ÇEKME ======================
 def get_stock_data(ticker):
@@ -66,18 +65,18 @@ def get_stock_data(ticker):
         ema_50 = close.ewm(span=50, adjust=False).mean().iloc[-1]
         ema_200 = close.ewm(span=200, adjust=False).mean().iloc[-1]
         
-        # RSI
+        # RSI (9)
         delta = close.diff()
-        gain = delta.where(delta > 0, 0).rolling(14).mean()
-        loss = -delta.where(delta < 0, 0).rolling(14).mean()
+        gain = delta.where(delta > 0, 0).rolling(RSI_PERIOD).mean()
+        loss = -delta.where(delta < 0, 0).rolling(RSI_PERIOD).mean()
         rsi = 100 - (100 / (1 + gain/loss))
         current_rsi = round(float(rsi.iloc[-1]), 1)
 
-        # MACD
-        exp12 = close.ewm(span=12, adjust=False).mean()
-        exp26 = close.ewm(span=26, adjust=False).mean()
-        macd = exp12 - exp26
-        signal = macd.ewm(span=9, adjust=False).mean()
+        # MACD (8,17,9)
+        exp_fast = close.ewm(span=MACD_FAST, adjust=False).mean()
+        exp_slow = close.ewm(span=MACD_SLOW, adjust=False).mean()
+        macd = exp_fast - exp_slow
+        signal = macd.ewm(span=MACD_SIGNAL, adjust=False).mean()
         macd_guc = macd.iloc[-1] > signal.iloc[-1]
 
         # ATR
@@ -86,16 +85,16 @@ def get_stock_data(ticker):
 
         # Hacim
         avg_vol = volume.rolling(20).mean().iloc[-1]
-        hacim_guc = volume.iloc[-1] > (avg_vol * 1.4)
+        hacim_guc = volume.iloc[-1] > (avg_vol * 1.35)
 
-        # ==================== KALİTELİ SİNYAL KOŞULU ====================
+        # ====================== SİNYAL KOŞULU ======================
         if (fiyat > ema_50 and fiyat > ema_200 and 
-            32 < current_rsi < 48 and 
+            33 < current_rsi < 48 and 
             macd_guc and hacim_guc):
 
-            stop = round(fiyat - (atr * 1.75), 2)
+            stop = round(fiyat - (atr * 1.8), 2)
             risk = max(fiyat - stop, 0.01)
-            hedef = round(fiyat + (risk * 3), 2)      # 1:3 Risk/Reward
+            hedef = round(fiyat + (risk * 3.0), 2)
             kar_orani = round(((hedef - fiyat) / fiyat) * 100, 1)
 
             return {
@@ -109,15 +108,14 @@ def get_stock_data(ticker):
             }
         return None
 
-    except Exception as e:
-        # logging.error(f"{ticker} Hata: {e}")
+    except:
         return None
 
 # ====================== TARAMA ======================
 async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE, update=None):
     try:
         if update:
-            await update.message.reply_text(f"🔄 Tüm BIST ({len(HISSE_LISTESI)} hisse) taranıyor...\nBu işlem 40-60 saniye sürebilir.")
+            await update.message.reply_text("🔄 Tüm BIST taranıyor (RSI9 + MACD 8-17-9)...")
         else:
             await context.bot.send_message(MY_CHAT_ID, "🔄 Otomatik tarama başladı...")
 
@@ -129,10 +127,10 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE, update=None):
         valid = [s for s in results if s]
         
         if not valid:
-            await context.bot.send_message(MY_CHAT_ID, "🔍 Bu taramada yeterince güçlü sinyal bulunamadı.")
+            await context.bot.send_message(MY_CHAT_ID, "🔍 Bu taramada güçlü sinyal bulunamadı.")
             return
 
-        mesaj = "🚀 **TÜM BIST KALİTE SİNYAL TARAMASI**\n\n"
+        mesaj = "🚀 **RSI 9 + MACD(8,17,9) KALİTE SİNYALLER**\n\n"
         for s in valid:
             mesaj += (
                 f"**#{s['kod']}** 🔥\n"
@@ -163,5 +161,5 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler('analiz', manuel_analiz))
     app.job_queue.run_repeating(sinyal_tara, interval=1800, first=30)  # 30 dakikada bir
     
-    logging.info(f"🤖 Bot Güncellendi - Tüm BIST ({len(HISSE_LISTESI)} hisse) Aktif")
+    logging.info(f"🤖 Bot Aktif → RSI({RSI_PERIOD}) | MACD({MACD_FAST},{MACD_SLOW},{MACD_SIGNAL})")
     app.run_polling()
