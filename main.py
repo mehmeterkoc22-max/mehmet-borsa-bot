@@ -53,7 +53,6 @@ def save_signal(signal):
         conn = sqlite3.connect('signals.db')
         cursor = conn.cursor()
         today = date.today().isoformat()
-        
         cursor.execute('SELECT COUNT(*) FROM signals WHERE date = ? AND ticker = ?', (today, signal['kod']))
         if cursor.fetchone()[0] > 0:
             conn.close()
@@ -63,48 +62,25 @@ def save_signal(signal):
             INSERT INTO signals (timestamp, date, ticker, price, stop, target, kar, rsi, patterns, pivot_s1)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            today, signal['kod'], signal['fiyat'], signal['stop'],
-            signal['hedef'], signal['kar'], signal['rsi'],
-            signal.get('patterns', ''), signal.get('pivot_s1')
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"), today, signal['kod'],
+            signal['fiyat'], signal['stop'], signal['hedef'], signal['kar'],
+            signal['rsi'], signal.get('patterns', ''), signal.get('pivot_s1')
         ))
         conn.commit()
         conn.close()
         return True
-    except Exception as e:
-        logging.error(f"DB hatası: {e}")
+    except:
         return False
 
 # ====================== AYARLAR ======================
 MY_CHAT_ID = 1033571271
 
-# ====================== TÜM BIST HİSSELERİ (Ana + Yıldız Pazar) ======================
-HISSE_LISTESI = [
-    "AEFES","AGHOL","AKBNK","AKCNS","AKFGY","AKFYE","AKSA","AKSEN","ALARK","ALBRK","ALFAS","ALTNY","ANSGR","ARCLK",
-    "ASELS","ASTOR","BALSU","BERA","BIMAS","BIOEN","BOBET","BRSAN","BRYAT","BSOKE","BTCIM","CANTE","CCOLA","CIMSA",
-    "CWENE","DOAS","DOHOL","ECILC","ECZYT","EGEEN","EKGYO","ENJSA","ENKAI","EREGL","EUPWR","FENER","FROTO","GARAN",
-    "GEDIK","GENIL","GESAN","GIPTA","GUBRF","GWIND","HALKB","HEKTS","HRKET","ICBCT","IMASM","IPEKE","ISCTR","ISGYO",
-    "ISMEN","IZMDC","KARKM","KAYSE","KCHOL","KLSER","KOLSN","KONTR","KONYA","KORDS","KOZAA","KOZAL","KRDMD","KTLEV",
-    "LMKDC","MAVI","MHRGY","MOGAN","ODAS","OTKAR","OYAKC","PASEU","PEKGY","PETKM","PGSUS","PTTGY","QUAGR","RALYH",
-    "REEDR","SAHOL","SASA","SAYAS","SDTTR","SISE","SKBNK","SMRTG","SOKM","TABGD","TCELL","THYAO","TKFEN","TOASO",
-    "TSKB","TUKAS","TUPRS","TURSG","ULKER","VAKBN","VESBE","VESTL","YEOTK","YKBNK","YYLGD","ZOREN",
-    # Yıldız Pazar ve Diğer Hisseler
-    "ADESE","AFYON","AGYO","AKSGY","ALGYO","ALKA","ALKAR","ALMAD","ANHYT","APX","ARTGR","ASUZU","ATAGY","ATEKS",
-    "AYEN","AYGAZ","BAGFS","BAYRK","BEGYO","BIZIM","BJKAS","BNTAS","BOLUC","BRMEN","BURCE","BURVA","CELHA","CEMAS",
-    "CEMTS","CEO","CUS","DARDL","DENCM","DERIM","DESA","DGATE","DGGYO","DGNMO","DIRIT","DITAS","DMSAS","DURDO",
-    "EDIP","EGEPO","EGPRO","EGSER","EMKEL","EMNIS","ERBOS","ERCB","ERSU","ESCOM","ESEN","ETI","EUKYO","EUYO",
-    "FNSYO","FORMT","FZLGY","GENTS","GLYHO","GSDHO","GUNER","HATEK","HAYAT","HLGYO","HURGZ","HZNDR","IDGYO",
-    "IEYHO","IHEVA","IHLAS","IHLGM","IHGZT","INGYO","INTEM","ISBTR","IZENR","JANTS","KAPLM","KARTN","KATMR","KENT",
-    "KERVT","KIMSA","KRDMA","KRDMB","KRGYO","KRONT","KRSAN","KUTPO","LKMNH","LOGO","MAALT","MEGAP","MGROS","MIPAZ",
-    "MNMAN","MNDTR","MPARK","MRDIN","MRSHL","MTRKS","MUTLU","NATHK","NETAS","NIBAS","NIGDE","NKGYO","NTEK","NTTUR",
-    "NUGYO","OFSYM","ONCSM","ORMA","OSMEN","OYA","OZKGY","OZRDN","PAGYO","PARKM","PEGYO","PINSU","PKART","PKENT",
-    "PNSUT","POLHO","PRKAB","PRKCG","PRKIN","PSDTC","PTOFS","QNBFB","QNBFL","RHEAG","RHGYO","RYSAS","SAFKR","SANEL",
-    "SANFM","SANKO","SAY","SEKFK","SELEC","SENTE","SERSN","SKTAS","SMART","SNGYO","SNKRN","SONME","SRVGY","STARK",
-    "STN","SUWEN","TAVHL","TBORG","TEZOL","TIRE","TM","TMSN","TRCAS","TRKCM","TTKOM","TTRAK","TURGG","ULAS","ULUSE",
-    "UNYEC","USAK","UTPYA","VAKFN","VAKKO","VERUS","VKING","YAPRK","YATAS","YAYLA","YKGYO","YUNSA"
-]
+# Tüm BIST Hisseleri
+HISSE_LISTESI = ["THYAO","GARAN","ISCTR","EREGL","BIMAS","ASELS","SASA","TUPRS","FROTO","KCHOL","TCELL","PETKM",
+                 "SISE","AKBNK","SAHOL","PGSUS","ARCLK","KOZAL","HEKTS","TOASO","VESTL","ENKAI","GUBRF","ODAS",
+                 "VESBE","TKFEN","HALKB","VAKBN","EKGYO","ASTOR","KONTR","OYAKC"]
 
-# ====================== FONKSİYONLAR ======================
+# ====================== VERİ ÇEKME (ESNETİLMİŞ) ======================
 def get_stock_data(ticker: str):
     try:
         df = yf.download(f"{ticker}.IS", period="40d", interval="1h", progress=False, auto_adjust=True, timeout=12)
@@ -116,28 +92,34 @@ def get_stock_data(ticker: str):
         close = df['Close']
         current_price = round(float(close.iloc[-1]), 2)
 
+        # RSI
         delta = close.diff()
         gain = delta.where(delta > 0, 0).rolling(14).mean()
         loss = -delta.where(delta < 0, 0).rolling(14).mean()
         rsi = 100 - (100 / (1 + gain/loss))
         current_rsi = round(float(rsi.iloc[-1]), 1)
 
+        # EMA
+        ema20 = close.ewm(span=20, adjust=False).mean().iloc[-1]
         ema50 = close.ewm(span=50, adjust=False).mean().iloc[-1]
-        ema200 = close.ewm(span=200, adjust=False).mean().iloc[-1]
 
+        # MACD
         exp1 = close.ewm(span=12, adjust=False).mean()
         exp2 = close.ewm(span=26, adjust=False).mean()
         macd_line = exp1 - exp2
         signal_line = macd_line.ewm(span=9, adjust=False).mean()
-        macd_bullish = macd_line.iloc[-1] > signal_line.iloc[-1] and macd_line.iloc[-1] > 0
+        macd_bullish = macd_line.iloc[-1] > signal_line.iloc[-1]
 
+        # ATR
         tr = pd.concat([(df['High'] - df['Low']), abs(df['High'] - close.shift()), abs(df['Low'] - close.shift())], axis=1).max(axis=1)
         atr = tr.rolling(14).mean().iloc[-1]
 
-        volume_power = df['Volume'].iloc[-1] > (df['Volume'].rolling(20).mean().iloc[-1] * 1.45)
-
-        if (current_price > ema50 and ema50 > ema200 and 32 < current_rsi < 48 and macd_bullish and volume_power):
-            stop_loss = round(current_price - (atr * 1.8), 2)
+        # ESNETİLMİŞ KOŞULLAR
+        if (current_rsi < 52 and                  # RSI 52 altı
+            macd_bullish and 
+            current_price > ema20):               # Sadece EMA20 üstü yeterli
+            
+            stop_loss = round(current_price - (atr * 1.7), 2)
             target = round(current_price + (current_price - stop_loss) * 2.8, 2)
             kar = round(((target - current_price) / current_price) * 100, 1)
 
@@ -148,7 +130,7 @@ def get_stock_data(ticker: str):
                 "hedef": target,
                 "kar": kar,
                 "rsi": current_rsi,
-                "patterns": "Trend + RSI + Volume"
+                "patterns": "Esnetilmiş Sinyal"
             }
         return None
     except Exception as e:
@@ -157,7 +139,7 @@ def get_stock_data(ticker: str):
 
 # ====================== TARAMA ======================
 async def sinyal_tara(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"🔄 Tüm BIST (Ana + Yıldız Pazar) taranıyor...\nToplam Hisse: **{len(HISSE_LISTESI)}**")
+    await update.message.reply_text("🔄 Tüm BIST taranıyor (Esnetilmiş Koşul)...")
 
     with ThreadPoolExecutor(max_workers=12) as executor:
         loop = asyncio.get_event_loop()
@@ -167,10 +149,10 @@ async def sinyal_tara(update: Update, context: ContextTypes.DEFAULT_TYPE):
     signals = [s for s in results if s]
     
     if not signals:
-        await update.message.reply_text("🔍 Bu taramada güçlü sinyal bulunamadı.")
+        await update.message.reply_text("🔍 Bu taramada sinyal bulunamadı.")
         return
 
-    mesaj = f"🚀 **ULTRA SİNYAL** ({len(signals)} adet) - {datetime.now().strftime('%H:%M')}\n\n"
+    mesaj = f"🚀 **ESNETİLMİŞ SİNYAL** ({len(signals)} adet) - {datetime.now().strftime('%H:%M')}\n\n"
     
     for s in signals:
         mesaj += (
@@ -193,7 +175,7 @@ if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
    
     app.add_handler(CommandHandler('analiz', sinyal_tara))
-    app.job_queue.run_repeating(sinyal_tara, interval=1800, first=60)
+    app.job_queue.run_repeating(sinyal_tara, interval=1800, first=30)
     
-    logging.info(f"✅ Bot başlatıldı! Toplam {len(HISSE_LISTESI)} hisse ile çalışıyor.")
+    logging.info("✅ Bot başlatıldı - Koşullar esnetildi")
     app.run_polling(drop_pending_updates=True)
