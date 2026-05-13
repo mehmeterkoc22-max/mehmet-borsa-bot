@@ -87,62 +87,58 @@ HISSE_LISTESI = [
     "ISMEN","IZMDC","KARKM","KAYSE","KCHOL","KLSER","KOLSN","KONTR","KONYA","KORDS","KOZAA","KOZAL","KRDMD","KTLEV",
     "LMKDC","MAVI","MHRGY","MOGAN","ODAS","OTKAR","OYAKC","PASEU","PEKGY","PETKM","PGSUS","PTTGY","QUAGR","RALYH",
     "REEDR","SAHOL","SASA","SAYAS","SDTTR","SISE","SKBNK","SMRTG","SOKM","TABGD","TCELL","THYAO","TKFEN","TOASO",
-    "TSKB","TUKAS","TUPRS","TURSG","ULKER","VAKBN","VESBE","VESTL","YEOTK","YKBNK","YYLGD","ZOREN","ADESE","AFYON",
-    "AGYO","AKSGY","ALGYO","ALKA","ALKAR","ALMAD","ANHYT","APX","ARTGR","ASUZU","ATAGY","ATEKS","AYEN","AYGAZ",
-    "BAGFS","BAYRK","BEGYO","BIZIM","BJKAS","BNTAS","BOLUC","BRMEN","BURCE","BURVA","CELHA","CEMAS","CEMTS","CEO",
-    "CUS","DARDL","DENCM","DERIM","DESA","DGATE","DGGYO","DGNMO","DIRIT","DITAS","DMSAS","DURDO","EDIP","EGEPO",
-    "EGPRO","EGSER","EMKEL","EMNIS","ERBOS","ERCB","ERSU","ESCOM","ESEN","ETI","EUKYO","EUYO","FNSYO","FORMT",
-    "FZLGY","GENTS","GLYHO","GSDHO","GUNER","HATEK","HAYAT","HLGYO","HURGZ","HZNDR","IDGYO","IEYHO","IHEVA","IHLAS",
-    "IHLGM","IHGZT","INGYO","INTEM","ISBTR","IZENR","JANTS","KAPLM","KARTN","KATMR","KENT","KERVT","KIMSA","KRDMA",
-    "KRDMB","KRGYO","KRONT","KRSAN","KUTPO","LKMNH","LOGO","MAALT","MEGAP","MGROS","MIPAZ","MNMAN","MNDTR","MPARK",
-    "MRDIN","MRSHL","MTRKS","MUTLU","NATHK","NETAS","NIBAS","NIGDE","NKGYO","NTEK","NTTUR","NUGYO","OFSYM","ONCSM",
-    "ORMA","OSMEN","OYA","OZKGY","OZRDN","PAGYO","PARKM","PEGYO","PINSU","PKART","PKENT","PNSUT","POLHO","PRKAB",
-    "PRKCG","PRKIN","PSDTC","PTOFS","QNBFB","QNBFL","RHEAG","RHGYO","RYSAS","SAFKR","SANEL","SANFM","SANKO","SAY",
-    "SEKFK","SELEC","SENTE","SERSN","SKTAS","SMART","SNGYO","SNKRN","SONME","SRVGY","STARK","STN","SUWEN","TAVHL",
-    "TBORG","TEZOL","TIRE","TM","TMSN","TRCAS","TRKCM","TTKOM","TTRAK","TURGG","ULAS","ULUSE","UNYEC","USAK","UTPYA",
-    "VAKFN","VAKKO","VERUS","VKING","YAPRK","YATAS","YAYLA","YKGYO","YUNSA"
+    "TSKB","TUKAS","TUPRS","TURSG","ULKER","VAKBN","VESBE","VESTL","YEOTK","YKBNK","YYLGD","ZOREN",
+    # Yıldız Pazar ve Diğer Hisseler
+    "ADESE","AFYON","AGYO","AKSGY","ALGYO","ALKA","ALKAR","ALMAD","ANHYT","APX","ARTGR","ASUZU","ATAGY","ATEKS",
+    "AYEN","AYGAZ","BAGFS","BAYRK","BEGYO","BIZIM","BJKAS","BNTAS","BOLUC","BRMEN","BURCE","BURVA","CELHA","CEMAS",
+    "CEMTS","CEO","CUS","DARDL","DENCM","DERIM","DESA","DGATE","DGGYO","DGNMO","DIRIT","DITAS","DMSAS","DURDO",
+    "EDIP","EGEPO","EGPRO","EGSER","EMKEL","EMNIS","ERBOS","ERCB","ERSU","ESCOM","ESEN","ETI","EUKYO","EUYO",
+    "FNSYO","FORMT","FZLGY","GENTS","GLYHO","GSDHO","GUNER","HATEK","HAYAT","HLGYO","HURGZ","HZNDR","IDGYO",
+    "IEYHO","IHEVA","IHLAS","IHLGM","IHGZT","INGYO","INTEM","ISBTR","IZENR","JANTS","KAPLM","KARTN","KATMR","KENT",
+    "KERVT","KIMSA","KRDMA","KRDMB","KRGYO","KRONT","KRSAN","KUTPO","LKMNH","LOGO","MAALT","MEGAP","MGROS","MIPAZ",
+    "MNMAN","MNDTR","MPARK","MRDIN","MRSHL","MTRKS","MUTLU","NATHK","NETAS","NIBAS","NIGDE","NKGYO","NTEK","NTTUR",
+    "NUGYO","OFSYM","ONCSM","ORMA","OSMEN","OYA","OZKGY","OZRDN","PAGYO","PARKM","PEGYO","PINSU","PKART","PKENT",
+    "PNSUT","POLHO","PRKAB","PRKCG","PRKIN","PSDTC","PTOFS","QNBFB","QNBFL","RHEAG","RHGYO","RYSAS","SAFKR","SANEL",
+    "SANFM","SANKO","SAY","SEKFK","SELEC","SENTE","SERSN","SKTAS","SMART","SNGYO","SNKRN","SONME","SRVGY","STARK",
+    "STN","SUWEN","TAVHL","TBORG","TEZOL","TIRE","TM","TMSN","TRCAS","TRKCM","TTKOM","TTRAK","TURGG","ULAS","ULUSE",
+    "UNYEC","USAK","UTPYA","VAKFN","VAKKO","VERUS","VKING","YAPRK","YATAS","YAYLA","YKGYO","YUNSA"
 ]
 
 # ====================== FONKSİYONLAR ======================
 def get_stock_data(ticker: str):
     try:
-        df = yf.download(f"{ticker}.IS", period="45d", interval="1h", progress=False, auto_adjust=True, timeout=15)
-        if df.empty or len(df) < 100:
+        df = yf.download(f"{ticker}.IS", period="40d", interval="1h", progress=False, auto_adjust=True, timeout=12)
+        if df.empty or len(df) < 80:
             return None
         if isinstance(df.columns, pd.MultiIndex):
             df = df.droplevel(0, axis=1)
             
-        df = df[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
         close = df['Close']
         current_price = round(float(close.iloc[-1]), 2)
 
-        # RSI
         delta = close.diff()
         gain = delta.where(delta > 0, 0).rolling(14).mean()
         loss = -delta.where(delta < 0, 0).rolling(14).mean()
         rsi = 100 - (100 / (1 + gain/loss))
         current_rsi = round(float(rsi.iloc[-1]), 1)
 
-        # EMA
         ema50 = close.ewm(span=50, adjust=False).mean().iloc[-1]
         ema200 = close.ewm(span=200, adjust=False).mean().iloc[-1]
 
-        # MACD
         exp1 = close.ewm(span=12, adjust=False).mean()
         exp2 = close.ewm(span=26, adjust=False).mean()
         macd_line = exp1 - exp2
         signal_line = macd_line.ewm(span=9, adjust=False).mean()
         macd_bullish = macd_line.iloc[-1] > signal_line.iloc[-1] and macd_line.iloc[-1] > 0
 
-        # ATR
         tr = pd.concat([(df['High'] - df['Low']), abs(df['High'] - close.shift()), abs(df['Low'] - close.shift())], axis=1).max(axis=1)
         atr = tr.rolling(14).mean().iloc[-1]
 
         volume_power = df['Volume'].iloc[-1] > (df['Volume'].rolling(20).mean().iloc[-1] * 1.45)
 
         if (current_price > ema50 and ema50 > ema200 and 32 < current_rsi < 48 and macd_bullish and volume_power):
-            stop_loss = round(current_price - (atr * 1.9), 2)
-            target = round(current_price + (current_price - stop_loss) * 3, 2)
+            stop_loss = round(current_price - (atr * 1.8), 2)
+            target = round(current_price + (current_price - stop_loss) * 2.8, 2)
             kar = round(((target - current_price) / current_price) * 100, 1)
 
             return {
@@ -161,7 +157,7 @@ def get_stock_data(ticker: str):
 
 # ====================== TARAMA ======================
 async def sinyal_tara(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"🔄 Tüm BIST Hisseleri taranıyor...\nToplam Hisse: **{len(HISSE_LISTESI)}**")
+    await update.message.reply_text(f"🔄 Tüm BIST (Ana + Yıldız Pazar) taranıyor...\nToplam Hisse: **{len(HISSE_LISTESI)}**")
 
     with ThreadPoolExecutor(max_workers=12) as executor:
         loop = asyncio.get_event_loop()
@@ -179,7 +175,7 @@ async def sinyal_tara(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for s in signals:
         mesaj += (
             f"**#{s['kod']}** 🔥\n"
-            f"💰 Fiyat: `{s['fiyat']}`\n"
+            f"💰 Fiyat: `{s['fiyat']}` TL\n"
             f"🎯 Hedef: `{s['hedef']}` (+%{s['kar']})\n"
             f"🛑 Stop: `{s['stop']}`\n"
             f"📊 RSI: `{s['rsi']}`\n"
@@ -197,7 +193,6 @@ if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
    
     app.add_handler(CommandHandler('analiz', sinyal_tara))
-    
     app.job_queue.run_repeating(sinyal_tara, interval=1800, first=60)
     
     logging.info(f"✅ Bot başlatıldı! Toplam {len(HISSE_LISTESI)} hisse ile çalışıyor.")
