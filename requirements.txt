@@ -1,7 +1,7 @@
 pandas
 yfinance
-pandas-ta
 python-telegram-bot[job-queue]
 flask
 requests
 matplotlib
+numpy
