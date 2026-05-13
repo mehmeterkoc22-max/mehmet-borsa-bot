@@ -78,8 +78,30 @@ def save_signal(signal):
 # ====================== AYARLAR ======================
 MY_CHAT_ID = 1033571271
 
-HISSE_LISTESI = ["THYAO","GARAN","ISCTR","EREGL","BIMAS","ASELS","SASA","TUPRS","FROTO","KCHOL","TCELL",
-                 "PETKM","SISE","AKBNK","SAHOL","PGSUS","ARCLK","KOZAL","HEKTS","TOASO"]
+# ====================== TÜM BIST HİSSELERİ (Ana + Yıldız Pazar) ======================
+HISSE_LISTESI = [
+    "AEFES","AGHOL","AKBNK","AKCNS","AKFGY","AKFYE","AKSA","AKSEN","ALARK","ALBRK","ALFAS","ALTNY","ANSGR","ARCLK",
+    "ASELS","ASTOR","BALSU","BERA","BIMAS","BIOEN","BOBET","BRSAN","BRYAT","BSOKE","BTCIM","CANTE","CCOLA","CIMSA",
+    "CWENE","DOAS","DOHOL","ECILC","ECZYT","EGEEN","EKGYO","ENJSA","ENKAI","EREGL","EUPWR","FENER","FROTO","GARAN",
+    "GEDIK","GENIL","GESAN","GIPTA","GUBRF","GWIND","HALKB","HEKTS","HRKET","ICBCT","IMASM","IPEKE","ISCTR","ISGYO",
+    "ISMEN","IZMDC","KARKM","KAYSE","KCHOL","KLSER","KOLSN","KONTR","KONYA","KORDS","KOZAA","KOZAL","KRDMD","KTLEV",
+    "LMKDC","MAVI","MHRGY","MOGAN","ODAS","OTKAR","OYAKC","PASEU","PEKGY","PETKM","PGSUS","PTTGY","QUAGR","RALYH",
+    "REEDR","SAHOL","SASA","SAYAS","SDTTR","SISE","SKBNK","SMRTG","SOKM","TABGD","TCELL","THYAO","TKFEN","TOASO",
+    "TSKB","TUKAS","TUPRS","TURSG","ULKER","VAKBN","VESBE","VESTL","YEOTK","YKBNK","YYLGD","ZOREN","ADESE","AFYON",
+    "AGYO","AKSGY","ALGYO","ALKA","ALKAR","ALMAD","ANHYT","APX","ARTGR","ASUZU","ATAGY","ATEKS","AYEN","AYGAZ",
+    "BAGFS","BAYRK","BEGYO","BIZIM","BJKAS","BNTAS","BOLUC","BRMEN","BURCE","BURVA","CELHA","CEMAS","CEMTS","CEO",
+    "CUS","DARDL","DENCM","DERIM","DESA","DGATE","DGGYO","DGNMO","DIRIT","DITAS","DMSAS","DURDO","EDIP","EGEPO",
+    "EGPRO","EGSER","EMKEL","EMNIS","ERBOS","ERCB","ERSU","ESCOM","ESEN","ETI","EUKYO","EUYO","FNSYO","FORMT",
+    "FZLGY","GENTS","GLYHO","GSDHO","GUNER","HATEK","HAYAT","HLGYO","HURGZ","HZNDR","IDGYO","IEYHO","IHEVA","IHLAS",
+    "IHLGM","IHGZT","INGYO","INTEM","ISBTR","IZENR","JANTS","KAPLM","KARTN","KATMR","KENT","KERVT","KIMSA","KRDMA",
+    "KRDMB","KRGYO","KRONT","KRSAN","KUTPO","LKMNH","LOGO","MAALT","MEGAP","MGROS","MIPAZ","MNMAN","MNDTR","MPARK",
+    "MRDIN","MRSHL","MTRKS","MUTLU","NATHK","NETAS","NIBAS","NIGDE","NKGYO","NTEK","NTTUR","NUGYO","OFSYM","ONCSM",
+    "ORMA","OSMEN","OYA","OZKGY","OZRDN","PAGYO","PARKM","PEGYO","PINSU","PKART","PKENT","PNSUT","POLHO","PRKAB",
+    "PRKCG","PRKIN","PSDTC","PTOFS","QNBFB","QNBFL","RHEAG","RHGYO","RYSAS","SAFKR","SANEL","SANFM","SANKO","SAY",
+    "SEKFK","SELEC","SENTE","SERSN","SKTAS","SMART","SNGYO","SNKRN","SONME","SRVGY","STARK","STN","SUWEN","TAVHL",
+    "TBORG","TEZOL","TIRE","TM","TMSN","TRCAS","TRKCM","TTKOM","TTRAK","TURGG","ULAS","ULUSE","UNYEC","USAK","UTPYA",
+    "VAKFN","VAKKO","VERUS","VKING","YAPRK","YATAS","YAYLA","YKGYO","YUNSA"
+]
 
 # ====================== FONKSİYONLAR ======================
 def get_stock_data(ticker: str):
@@ -130,7 +152,7 @@ def get_stock_data(ticker: str):
                 "hedef": target,
                 "kar": kar,
                 "rsi": current_rsi,
-                "patterns": "Trend + RSI"
+                "patterns": "Trend + RSI + Volume"
             }
         return None
     except Exception as e:
@@ -139,7 +161,7 @@ def get_stock_data(ticker: str):
 
 # ====================== TARAMA ======================
 async def sinyal_tara(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔄 Ultra tarama başlatılıyor...")
+    await update.message.reply_text(f"🔄 Tüm BIST Hisseleri taranıyor...\nToplam Hisse: **{len(HISSE_LISTESI)}**")
 
     with ThreadPoolExecutor(max_workers=12) as executor:
         loop = asyncio.get_event_loop()
@@ -149,7 +171,7 @@ async def sinyal_tara(update: Update, context: ContextTypes.DEFAULT_TYPE):
     signals = [s for s in results if s]
     
     if not signals:
-        await update.message.reply_text("🔍 Bu taramada sinyal bulunamadı.")
+        await update.message.reply_text("🔍 Bu taramada güçlü sinyal bulunamadı.")
         return
 
     mesaj = f"🚀 **ULTRA SİNYAL** ({len(signals)} adet) - {datetime.now().strftime('%H:%M')}\n\n"
@@ -174,11 +196,9 @@ if __name__ == '__main__':
     TOKEN = "8027732851:AAFTv0qeU0REVmvjaeCaG8ZkOfmK0ENjiJc"
     app = ApplicationBuilder().token(TOKEN).build()
    
-    # Düzeltilmiş handler
     app.add_handler(CommandHandler('analiz', sinyal_tara))
     
-    # Otomatik tarama
     app.job_queue.run_repeating(sinyal_tara, interval=1800, first=60)
     
-    logging.info("✅ Bot başarıyla başlatıldı!")
+    logging.info(f"✅ Bot başlatıldı! Toplam {len(HISSE_LISTESI)} hisse ile çalışıyor.")
     app.run_polling(drop_pending_updates=True)
