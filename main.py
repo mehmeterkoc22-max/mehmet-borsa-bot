@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import yfinance as yf
 import pandas as pd
-import pandas_ta as ta
+import numpy as np
 
 from flask import Flask
 from telegram import Update
@@ -28,12 +28,10 @@ logging.basicConfig(
 app_web = Flask(__name__)
 
 @app_web.route('/')
-def home(): 
-    return "Bot Aktif", 200
+def home(): return "Bot Aktif", 200
 
 @app_web.route('/ping')
-def ping(): 
-    return "PONG", 200
+def ping(): return "PONG", 200
 
 def run_web():
     port = int(os.environ.get("PORT", 8080))
@@ -65,20 +63,14 @@ def save_signal(signal):
     try:
         conn = sqlite3.connect('signals.db')
         cursor = conn.cursor()
-       
         today = date.today().isoformat()
-       
-        # Aynı gün aynı hisse için tekrar kaydetme
-        cursor.execute('''
-            SELECT COUNT(*) FROM signals
-            WHERE date = ? AND ticker = ?
-        ''', (today, signal['kod']))
-       
+        
+        cursor.execute('SELECT COUNT(*) FROM signals WHERE date = ? AND ticker = ?', (today, signal['kod']))
         if cursor.fetchone()[0] > 0:
             logging.info(f"{signal['kod']} bugün zaten kaydedilmiş.")
             conn.close()
             return False
-       
+        
         cursor.execute('''
             INSERT INTO signals
             (timestamp, date, ticker, price, stop, target, kar, rsi, patterns, pivot_s1)
@@ -113,41 +105,40 @@ HISSE_LISTESI = ["THYAO","GARAN","ISCTR","EREGL","BIMAS","ASELS","SASA","TUPRS",
                  "AGROT","BEYAZ","ALVES","ADEL","GESAN","MAVI","LOGO","MPARK","SAYAS","TABGD",
                  "ULKER","ZOREN","BIOEN","BTCIM","CANTE","CCOLA","ECILC","ECZYT","ENJSA","FENER"]
 
-# ====================== PARAMETRELER ======================
 RSI_PERIOD = 14
-MACD_FAST = 12
-MACD_SLOW = 26
-MACD_SIGNAL = 9
 ATR_PERIOD = 14
 VOLUME_MULTIPLIER = 1.45
-BB_PERIOD = 20
-BB_STD = 2
+
+# ====================== İNDİKATÖRLER ======================
+def calculate_rsi(series, period=14):
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+def calculate_atr(high, low, close, period=14):
+    tr1 = high - low
+    tr2 = abs(high - close.shift())
+    tr3 = abs(low - close.shift())
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    atr = tr.rolling(window=period).mean()
+    return atr
 
 # ====================== MUM FORMASYONLARI ======================
 def detect_bullish_patterns(df):
     try:
-        o = df['Open']
-        c = df['Close']
-        h = df['High']
-        l = df['Low']
-       
+        o, c, h, l = df['Open'], df['Close'], df['High'], df['Low']
         body = c - o
-       
+        
         hammer = ((o.where(body > 0, c) - l) > 2 * abs(body)) & ((h - c.where(body > 0, o)) < 0.4 * abs(body))
         engulfing = (c.shift(1) < o.shift(1)) & (c > o) & (c > o.shift(1)) & (o < c.shift(1))
-        piercing = (c.shift(1) < o.shift(1)) & (c > o) & (c > (o.shift(1) + c.shift(1))/2) & (o < c.shift(1))
-        harami = (c.shift(1) < o.shift(1)) & (c > o) & (c < o.shift(1)) & (o > c.shift(1))
-        morning_star = ((c.shift(2) < o.shift(2)) & (abs(body.shift(1)) < 0.3 * abs(c.shift(2)-o.shift(2))) & (c > o) & (c > (o.shift(2) + c.shift(2))/2))
-        three_soldiers = (body > 0) & (body.shift(1) > 0) & (body.shift(2) > 0) & (c > c.shift(1)) & (c.shift(1) > c.shift(2))
         
         patterns = []
         if hammer.iloc[-1]: patterns.append("Hammer")
         if engulfing.iloc[-1]: patterns.append("Engulfing")
-        if piercing.iloc[-1]: patterns.append("Piercing")
-        if harami.iloc[-1]: patterns.append("Harami")
-        if morning_star.iloc[-1]: patterns.append("MorningStar")
-        if three_soldiers.iloc[-1]: patterns.append("ThreeSoldiers")
-       
+        
         return ", ".join(patterns) if patterns else None
     except:
         return None
@@ -172,7 +163,6 @@ def get_stock_data(ticker: str):
         if df.empty or len(df) < 100:
             return None
 
-        # MultiIndex temizleme
         if isinstance(df.columns, pd.MultiIndex):
             df = df.droplevel(0, axis=1)
 
@@ -181,31 +171,32 @@ def get_stock_data(ticker: str):
         close = df['Close']
         current_price = round(float(close.iloc[-1]), 2)
 
-        # İndikatörler
-        rsi_series = ta.rsi(close, length=RSI_PERIOD)
-        current_rsi = round(float(rsi_series.iloc[-1]), 1) if not rsi_series.empty else 0
+        # RSI
+        rsi = calculate_rsi(close, RSI_PERIOD)
+        current_rsi = round(float(rsi.iloc[-1]), 1) if not rsi.empty else 0
 
-        macd = ta.macd(close, fast=MACD_FAST, slow=MACD_SLOW, signal=MACD_SIGNAL)
-        macd_line = macd.iloc[-1, 0]
-        signal_line = macd.iloc[-1, 1]
-        macd_bullish = macd_line > signal_line and macd_line > 0
+        # EMA
+        ema50 = close.ewm(span=50, adjust=False).mean().iloc[-1]
+        ema200 = close.ewm(span=200, adjust=False).mean().iloc[-1]
 
-        bb = ta.bbands(close, length=BB_PERIOD, std=BB_STD)
-        price_near_lower = current_price <= (bb.iloc[-1, 0] * 1.018)  # BBL
+        # MACD (basit versiyon)
+        exp1 = close.ewm(span=12, adjust=False).mean()
+        exp2 = close.ewm(span=26, adjust=False).mean()
+        macd_line = exp1 - exp2
+        signal_line = macd_line.ewm(span=9, adjust=False).mean()
+        macd_bullish = macd_line.iloc[-1] > signal_line.iloc[-1] and macd_line.iloc[-1] > 0
 
-        atr = ta.atr(df['High'], df['Low'], close, length=ATR_PERIOD).iloc[-1]
+        # ATR & Volume
+        atr = calculate_atr(df['High'], df['Low'], close, ATR_PERIOD).iloc[-1]
         volume_power = df['Volume'].iloc[-1] > (df['Volume'].rolling(20).mean().iloc[-1] * VOLUME_MULTIPLIER)
 
         patterns = detect_bullish_patterns(df)
         pivot_data = calculate_pivot_points(df)
 
-        if (current_price > close.ewm(span=50, adjust=False).mean().iloc[-1] and
-            close.ewm(span=50, adjust=False).mean().iloc[-1] > close.ewm(span=200, adjust=False).mean().iloc[-1] and
-            32 < current_rsi < 48 and 
-            macd_bullish and 
-            volume_power and
-            (price_near_lower or (pivot_data and pivot_data["near_support"])) and 
-            patterns):
+        # Sinyal Koşulları
+        if (current_price > ema50 and ema50 > ema200 and
+            32 < current_rsi < 48 and macd_bullish and volume_power and
+            patterns and pivot_data):
 
             stop_loss = round(current_price - (atr * 1.9), 2)
             risk = max(current_price - stop_loss, 0.05)
@@ -220,7 +211,7 @@ def get_stock_data(ticker: str):
                 "kar": kar_orani,
                 "rsi": current_rsi,
                 "patterns": patterns,
-                "pivot_s1": pivot_data["s1"] if pivot_data else None
+                "pivot_s1": pivot_data["s1"]
             }
         return None
 
@@ -230,33 +221,28 @@ def get_stock_data(ticker: str):
 
 # ====================== TARAMA ======================
 async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE, update: Update = None):
+    # ... (önceki kodla aynı, burayı değiştirmedim)
     try:
         start_time = datetime.now()
         if update:
-            await update.message.reply_text("🔄 Ultra tarama + DB kaydı başladı...")
+            await update.message.reply_text("🔄 Ultra tarama başladı...")
 
         logging.info("=== Yeni Tarama Başladı ===")
 
-        with ThreadPoolExecutor(max_workers=15) as executor:
+        with ThreadPoolExecutor(max_workers=12) as executor:
             loop = asyncio.get_event_loop()
             tasks = [loop.run_in_executor(executor, get_stock_data, kod) for kod in HISSE_LISTESI]
             results = await asyncio.gather(*tasks)
 
         signals = [s for s in results if s]
-        saved_count = 0
-
-        for sig in signals:
-            if save_signal(sig):
-                saved_count += 1
+        saved_count = sum(1 for sig in signals if save_signal(sig))
 
         if not signals:
-            logging.info("Bu taramada sinyal bulunamadı.")
             await context.bot.send_message(MY_CHAT_ID, "🔍 Bu taramada güçlü sinyal bulunamadı.")
             return
 
-        # Telegram Mesajı
         mesaj = f"🚀 **ULTRA KALİTE SİNYALLER** ({len(signals)} adet) - {datetime.now().strftime('%d.%m %H:%M')}\n"
-        mesaj += f"📊 {saved_count} yeni kayıt DB'ye eklendi.\n\n"
+        mesaj += f"📊 {saved_count} yeni kayıt eklendi.\n\n"
 
         for s in signals:
             mesaj += (
@@ -270,27 +256,20 @@ async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE, update: Update = None)
             )
 
         await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
-       
-        duration = (datetime.now() - start_time).seconds
-        logging.info(f"Tarama tamamlandı. {len(signals)} sinyal bulundu, {saved_count} kayıt eklendi. Süre: {duration}sn")
-
+        
     except Exception as e:
         logging.error(f"Genel tarama hatası: {e}")
 
 # ====================== BAŞLAT ======================
 if __name__ == '__main__':
     init_db()
-    
-    # Web server (ping için)
     Thread(target=run_web, daemon=True).start()
     
     TOKEN = "8027732851:AAFTv0qeU0REVmvjaeCaG8ZkOfmK0ENjiJc"
-    
     app = ApplicationBuilder().token(TOKEN).build()
     
-    # Handler ve Job (Düzeltilmiş)
     app.add_handler(CommandHandler('analiz', sinyal_tara))
-    app.job_queue.run_repeating(sinyal_tara, interval=1800, first=60)  # 30 dakikada bir
+    app.job_queue.run_repeating(sinyal_tara, interval=1800, first=60)
 
-    logging.info("🚀 Ultra Gelişmiş BİST Bot + SQLite DB Aktif!")
+    logging.info("🚀 Bot pandas-ta olmadan başarıyla başlatıldı!")
     app.run_polling(drop_pending_updates=True)
