@@ -1,8 +1,19 @@
-requests
-yfinance
+# Temel kütüphaneler
 pandas
-mplfinance
+numpy
+yfinance
+pandas-ta
 python-telegram-bot[job-queue]
 flask
+
+# Opsiyonel ama faydalı olanlar
+requests
 matplotlib
+mplfinance
 pytz
+openpyxl
+seaborn
+
+# Logging ve diğer yardımcılar
+aiosqlite
+asyncio
