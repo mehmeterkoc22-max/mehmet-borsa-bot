@@ -1,10 +1,10 @@
 pandas
 numpy
 yfinance
-pandas_ta
-matplotlib
 Flask
 requests
 python-telegram-bot[job-queue]>=20.8
 python-dotenv
 aiohttp
+matplotlib
+ta-lib                  # opsiyonel
