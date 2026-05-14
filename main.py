@@ -14,8 +14,11 @@ from flask import Flask
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s',
-                    handlers=[logging.FileHandler("bot.log", encoding="utf-8"), logging.StreamHandler()])
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.FileHandler("bot.log", encoding="utf-8"), logging.StreamHandler()]
+)
 
 # ====================== FLASK ======================
 app_web = Flask(__name__)
@@ -34,7 +37,7 @@ HISSE_LISTESI = ["THYAO","GARAN","ISCTR","EREGL","BIMAS","ASELS","SASA","TUPRS",
                  "VESTL","ENKAI","GUBRF","ODAS","VESBE","TKFEN","HALKB","VAKBN","EKGYO","ASTOR",
                  "KONTR","OYAKC","ALARK","SKBNK","YKBNK","BRSAN","KRDMD"]
 
-# ====================== MANUEL İNDİKATÖRLER ======================
+# ====================== İNDİKATÖRLER ======================
 def calculate_rsi(close, period=14):
     delta = close.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
@@ -45,10 +48,12 @@ def calculate_rsi(close, period=14):
 def calculate_ema(close, period):
     return close.ewm(span=period, adjust=False).mean()
 
-# ====================== VERİ ANALİZ ======================
+# ====================== VERİ ANALİZ (ORTA SEVİYE) ======================
 def get_stock_data(ticker: str):
     try:
-        df = yf.download(f"{ticker}.IS", period="60d", interval="1h", progress=False, auto_adjust=True, timeout=15)
+        df = yf.download(f"{ticker}.IS", period="60d", interval="1h", 
+                        progress=False, auto_adjust=True, timeout=15)
+        
         if df.empty or len(df) < 100:
             return None
 
@@ -68,25 +73,31 @@ def get_stock_data(ticker: str):
         avg_vol = volume.rolling(20).mean().iloc[-1]
         volume_ratio = round(float(volume.iloc[-1] / avg_vol), 2) if avg_vol > 0 else 0
 
-        # Güçlü Alım Koşulları
-        if (35 <= current_rsi <= 57 and
-            current_price > ema21.iloc[-1] and
-            ema9.iloc[-1] > ema21.iloc[-1] > ema50.iloc[-1] and
-            volume_ratio >= 1.4):
+        # ==================== ORTA SEVİYE KOŞULLAR (Gevşetildi) ====================
+        if (30 <= current_rsi <= 62 and                    # RSI aralığı genişletildi
+            current_price > ema21.iloc[-1] and             # Fiyat EMA21 üstünde
+            ema21.iloc[-1] > ema50.iloc[-1] and            # Genel trend yukarı (EMA21 > EMA50)
+            volume_ratio >= 1.25):                         # Hacim biraz daha esnek
 
-            # Basit ATR hesabı
+            # ATR
             high_low = df['High'] - df['Low']
             high_close = np.abs(df['High'] - close.shift())
             low_close = np.abs(df['Low'] - close.shift())
             tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
             atr = tr.rolling(14).mean().iloc[-1]
 
-            stop_loss = round(current_price - (atr * 1.8), 2)
+            stop_loss = round(current_price - (atr * 1.75), 2)
             risk = current_price - stop_loss
-            target = round(current_price + (risk * 2.7), 2)
+            target = round(current_price + (risk * 2.5), 2)   # Risk/Reward biraz daha muhafazakar
             kar = round(((target - current_price) / current_price) * 100, 1)
 
-            pattern = "🔥 Çok Güçlü" if volume_ratio > 2.0 else "✅ Güçlü"
+            # Sinyal gücü
+            if volume_ratio > 2.0:
+                pattern = "🔥 Güçlü"
+            elif volume_ratio > 1.6:
+                pattern = "✅ İyi"
+            else:
+                pattern = "📈 Orta"
 
             return {
                 "kod": ticker,
@@ -107,7 +118,7 @@ def get_stock_data(ticker: str):
 # ====================== TARAMA ======================
 async def sinyal_tara(update: Update = None, context: ContextTypes.DEFAULT_TYPE = None):
     if update:
-        await update.message.reply_text("🔄 BIST güçlü setup taranıyor...")
+        await update.message.reply_text("🔄 BIST orta seviye tarama yapılıyor...")
 
     with ThreadPoolExecutor(max_workers=12) as executor:
         loop = asyncio.get_event_loop()
@@ -118,14 +129,14 @@ async def sinyal_tara(update: Update = None, context: ContextTypes.DEFAULT_TYPE 
 
     if not signals:
         if update:
-            await update.message.reply_text("❌ Bu sefer güçlü sinyal bulunamadı.")
+            await update.message.reply_text("❌ Bu taramada orta seviyede sinyal bulunamadı.")
         return
 
     signals.sort(key=lambda x: x.get('volume_ratio', 0), reverse=True)
 
-    mesaj = f"🚀 **GÜÇLÜ TRADE SETUP** ({len(signals)} adet) - {datetime.now().strftime('%H:%M')}\n\n"
+    mesaj = f"📊 **ORTA SEVİYE TRADE TARAMASI** ({len(signals)} adet) - {datetime.now().strftime('%H:%M')}\n\n"
 
-    for s in signals[:8]:
+    for s in signals[:10]:   # Daha fazla sinyal gösterebilir diye 10'a çıkardım
         mesaj += (
             f"**#{s['kod']}** {s['pattern']}\n"
             f"💰 Fiyat: `{s['fiyat']}`\n"
@@ -147,6 +158,7 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler('analiz', sinyal_tara))
     app.job_queue.run_repeating(sinyal_tara, interval=1800, first=30)
 
-    logging.info("✅ Bot başlatıldı (pandas_ta olmadan)")
-    print("🤖 Bot çalışıyor...")
+    logging.info("✅ Bot başlatıldı - Orta Seviye Tarama Modu")
+    print("🤖 Bot çalışıyor... Orta seviye filtre aktif.")
+    
     app.run_polling(drop_pending_updates=True)
