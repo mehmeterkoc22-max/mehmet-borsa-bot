@@ -1,7 +1,6 @@
 import os
 import asyncio
 import logging
-import time
 from datetime import datetime
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
@@ -14,21 +13,17 @@ from flask import Flask
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
 
-# ====================== LOG ======================
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("bot.log", encoding="utf-8"),
-        logging.StreamHandler()
-    ]
+    handlers=[logging.FileHandler("bot.log", encoding="utf-8"), logging.StreamHandler()]
 )
 
 # ====================== FLASK ======================
 app_web = Flask(__name__)
 
 @app_web.route('/')
-def home():
+def home(): 
     return "✅ BIST Trade Bot Aktif", 200
 
 def run_web():
@@ -36,32 +31,11 @@ def run_web():
     app_web.run(host='0.0.0.0', port=port, debug=False)
 
 # ====================== AYARLAR ======================
-# ====================== AYARLAR ======================
 MY_CHAT_ID = 1033571271
-
-HISSE_LISTESI = [
-    # ==================== BIST 30 ====================
-    "AEFES", "AKBNK", "ASELS", "ASTOR", "BIMAS", "EREGL", "FROTO", "GARAN", 
-    "GUBRF", "ISCTR", "KCHOL", "KOZAL", "PGSUS", "SAHOL", "SASA", "SISE", 
-    "TCELL", "THYAO", "TUPRS", "VAKBN", "YKBNK", "ENKAI", "PETKM", "ARCLK",
-    "TOASO", "BRSAN", "KRDMD", "OYAKC", "HEKTS", "EKGYO",
-
-    # ==================== Ek BIST 100 (Önemli olanlar) ====================
-    "ALARK", "AKSA", "AGHOL", "AHGAZ", "ALBRK", "ANACM", "ASUZU", "BAGFS",
-    "BAYRK", "BRYAT", "CIMSA", "DOHOL", "ECILC", "EKGYO", "ENJSA", "HALKB",
-    "HURGZ", "IPEKE", "KARSN", "KONTR", "KRDMD", "MGROS", "ODAS", "SKBNK",
-    "TKFEN", "VESBE", "VESTL", "YKBNK", "ZOREN",
-
-    # Mevcut listenin kalanları (tekrarları temizledim)
-    "PETKM", "SISE", "AKBNK", "SAHOL", "PGSUS", "ARCLK", "KOZAL", "HEKTS",
-    "TOASO", "VESTL", "ENKAI", "GUBRF", "ODAS", "VESBE", "TKFEN", "HALKB",
-    "VAKBN", "EKGYO", "ASTOR", "KONTR", "OYAKC", "ALARK", "SKBNK", "YKBNK",
-    "BRSAN", "KRDMD"
-]
-
-# Tekrarları temizle
-HISSE_LISTESI = list(dict.fromkeys(HISSE_LISTESI))  # Sıralamayı korur
-print(f"Toplam taranacak hisse: {len(HISSE_LISTESI)}")
+HISSE_LISTESI = ["THYAO","GARAN","ISCTR","EREGL","BIMAS","ASELS","SASA","TUPRS","FROTO","KCHOL",
+                 "TCELL","PETKM","SISE","AKBNK","SAHOL","PGSUS","ARCLK","KOZAL","HEKTS","TOASO",
+                 "VESTL","ENKAI","GUBRF","ODAS","VESBE","TKFEN","HALKB","VAKBN","EKGYO","ASTOR",
+                 "KONTR","OYAKC","ALARK","SKBNK","YKBNK","BRSAN","KRDMD"]
 
 # ====================== İNDİKATÖRLER ======================
 def calculate_rsi(close, period=14):
@@ -77,56 +51,35 @@ def calculate_ema(close, period):
 # ====================== VERİ ANALİZ ======================
 def get_stock_data(ticker: str):
     try:
-        logging.info(f"📥 {ticker} verisi çekiliyor...")
-        
-        df = None
-        for attempt in range(3):
-            try:
-                df = yf.download(
-                    f"{ticker}.IS",
-                    period="60d",
-                    interval="1h",
-                    progress=False,
-                    auto_adjust=True,
-                    timeout=25,
-                    threads=False
-                )
-                if not df.empty and len(df) >= 80:
-                    logging.info(f"✅ {ticker} - Veri alındı ({len(df)} satır)")
-                    break
-            except Exception as e:
-                logging.warning(f"{ticker} - Deneme {attempt+1} başarısız: {e}")
-                time.sleep(1.5)
-        
-        if df is None or df.empty or len(df) < 80:
-            logging.warning(f"❌ {ticker} için yeterli veri yok")
+        df = yf.download(f"{ticker}.IS", period="60d", interval="1h",
+                        progress=False, auto_adjust=True, timeout=15)
+       
+        if df.empty or len(df) < 100:
             return None
-
+            
         if isinstance(df.columns, pd.MultiIndex):
             df = df.droplevel(0, axis=1)
-
-        df.columns = [str(col).replace(' ', '') for col in df.columns]
-
-        if 'Close' not in df.columns:
-            return None
-
+            
         close = df['Close']
-        volume = df.get('Volume', pd.Series([0]*len(df)))
-
+        volume = df['Volume']
+        
         current_price = round(float(close.iloc[-1]), 2)
         rsi = calculate_rsi(close)
+        ema9 = calculate_ema(close, 9)
         ema21 = calculate_ema(close, 21)
         ema50 = calculate_ema(close, 50)
-
+        
         current_rsi = round(float(rsi.iloc[-1]), 1)
         avg_vol = volume.rolling(20).mean().iloc[-1]
         volume_ratio = round(float(volume.iloc[-1] / avg_vol), 2) if avg_vol > 0 else 0
 
-        if (25 <= current_rsi <= 68 and
-            current_price > ema21.iloc[-1] and
-            ema21.iloc[-1] > ema50.iloc[-1] and
-            volume_ratio >= 1.10):
+        # Orta Seviye Koşullar
+        if (30 <= current_rsi <= 62 and 
+            current_price > ema21.iloc[-1] and 
+            ema21.iloc[-1] > ema50.iloc[-1] and 
+            volume_ratio >= 1.25):
 
+            # ATR
             high_low = df['High'] - df['Low']
             high_close = np.abs(df['High'] - close.shift())
             low_close = np.abs(df['Low'] - close.shift())
@@ -138,7 +91,12 @@ def get_stock_data(ticker: str):
             target = round(current_price + (risk * 2.5), 2)
             kar = round(((target - current_price) / current_price) * 100, 1)
 
-            pattern = "🔥 Güçlü" if volume_ratio > 2.0 else "✅ İyi" if volume_ratio > 1.6 else "📈 Orta"
+            if volume_ratio > 2.0:
+                pattern = "🔥 Güçlü"
+            elif volume_ratio > 1.6:
+                pattern = "✅ İyi"
+            else:
+                pattern = "📈 Orta"
 
             return {
                 "kod": ticker,
@@ -151,79 +109,54 @@ def get_stock_data(ticker: str):
                 "pattern": pattern
             }
         return None
-
     except Exception as e:
-        logging.error(f"{ticker} hatası: {e}", exc_info=True)
+        logging.error(f"{ticker} hatası: {e}")
         return None
 
 # ====================== TARAMA ======================
 async def sinyal_tara(update: Update = None, context: ContextTypes.DEFAULT_TYPE = None):
-    start_time = datetime.now()
-    logging.info("🔄 Tarama başlatıldı")
-    
     if update:
         await update.message.reply_text("🔄 BIST orta seviye tarama yapılıyor...")
-
+        
     with ThreadPoolExecutor(max_workers=12) as executor:
         loop = asyncio.get_event_loop()
         tasks = [loop.run_in_executor(executor, get_stock_data, kod) for kod in HISSE_LISTESI]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    signals = [s for s in results if isinstance(s, dict)]
-    duration = (datetime.now() - start_time).seconds
-
-    logging.info(f"Tarama bitti → {len(signals)} sinyal bulundu ({duration}s)")
-
+        results = await asyncio.gather(*tasks)
+    
+    signals = [s for s in results if s]
+    
     if not signals:
-        mesaj = f"❌ Bu taramada sinyal bulunamadı. ({duration}s)"
         if update:
-            await update.message.reply_text(mesaj)
-        elif context:
-            await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj)
+            await update.message.reply_text("❌ Bu taramada orta seviyede sinyal bulunamadı.")
         return
 
     signals.sort(key=lambda x: x.get('volume_ratio', 0), reverse=True)
-
-    mesaj = f"📊 **ORTA SEVİYE TARAMA** ({len(signals)} sinyal) - {datetime.now().strftime('%H:%M')}\nSüre: {duration}s\n\n"
     
-    for s in signals[:12]:
+    mesaj = f"📊 **ORTA SEVİYE TRADE TARAMASI** ({len(signals)} adet) - {datetime.now().strftime('%H:%M')}\n\n"
+    
+    for s in signals[:10]:
         mesaj += (
             f"**#{s['kod']}** {s['pattern']}\n"
-            f"💰 `{s['fiyat']}` → 🎯 `{s['hedef']}` (+%{s['kar']})\n"
+            f"💰 Fiyat: `{s['fiyat']}`\n"
+            f"🎯 Hedef: `{s['hedef']}` (+%{s['kar']})\n"
             f"🛑 Stop: `{s['stop']}`\n"
             f"📊 RSI: `{s['rsi']}` | Vol: `{s['volume_ratio']}`x\n"
             f"────────────────────\n\n"
         )
-
-    try:
-        if update and update.message:
-            await update.message.reply_text(mesaj, parse_mode='Markdown')
-        elif context:
-            await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
-    except Exception as e:
-        logging.error(f"Mesaj gönderme hatası: {e}")
+    
+    await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
 
 # ====================== BAŞLAT ======================
 if __name__ == '__main__':
-    try:
-        # Web server thread
-        Thread(target=run_web, daemon=True).start()
-        logging.info(f"🌐 Flask web server başlatıldı (PORT: {os.environ.get('PORT', 8080)})")
-
-        TOKEN = "8027732851:AAFTv0qeU0REVmvjaeCaG8ZkOfmK0ENjiJc"
-        
-        app = ApplicationBuilder().token(TOKEN).build()
-        app.add_handler(CommandHandler('analiz', sinyal_tara))
-        
-        # Otomatik tarama
-        app.job_queue.run_repeating(sinyal_tara, interval=1800, first=60)
-        
-        logging.info("🤖 Bot başarıyla başlatıldı - Render Uyumlu")
-        print("✅ Bot çalışıyor...")
-
-        app.run_polling(drop_pending_updates=True)
-
-    except Exception as e:
-        logging.error("❌ Bot başlatılırken kritik hata:", exc_info=True)
-        print(f"Kritik hata: {e}")
-        raise
+    Thread(target=run_web, daemon=True).start()
+    
+    TOKEN = "8027732851:AAFTv0qeU0REVmvjaeCaG8ZkOfmK0ENjiJc"
+    
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(CommandHandler('analiz', sinyal_tara))
+    app.job_queue.run_repeating(sinyal_tara, interval=1800, first=30)
+    
+    logging.info("✅ Bot başlatıldı - Orta Seviye Tarama Modu")
+    print("🤖 Bot çalışıyor... Orta seviye filtre aktif.")
+    
+    app.run_polling(drop_pending_updates=True)
