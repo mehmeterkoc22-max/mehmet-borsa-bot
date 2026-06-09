@@ -36,11 +36,32 @@ def run_web():
     app_web.run(host='0.0.0.0', port=port, debug=False)
 
 # ====================== AYARLAR ======================
+# ====================== AYARLAR ======================
 MY_CHAT_ID = 1033571271
-HISSE_LISTESI = ["THYAO","GARAN","ISCTR","EREGL","BIMAS","ASELS","SASA","TUPRS","FROTO","KCHOL",
-                 "TCELL","PETKM","SISE","AKBNK","SAHOL","PGSUS","ARCLK","KOZAL","HEKTS","TOASO",
-                 "VESTL","ENKAI","GUBRF","ODAS","VESBE","TKFEN","HALKB","VAKBN","EKGYO","ASTOR",
-                 "KONTR","OYAKC","ALARK","SKBNK","YKBNK","BRSAN","KRDMD"]
+
+HISSE_LISTESI = [
+    # ==================== BIST 30 ====================
+    "AEFES", "AKBNK", "ASELS", "ASTOR", "BIMAS", "EREGL", "FROTO", "GARAN", 
+    "GUBRF", "ISCTR", "KCHOL", "KOZAL", "PGSUS", "SAHOL", "SASA", "SISE", 
+    "TCELL", "THYAO", "TUPRS", "VAKBN", "YKBNK", "ENKAI", "PETKM", "ARCLK",
+    "TOASO", "BRSAN", "KRDMD", "OYAKC", "HEKTS", "EKGYO",
+
+    # ==================== Ek BIST 100 (Önemli olanlar) ====================
+    "ALARK", "AKSA", "AGHOL", "AHGAZ", "ALBRK", "ANACM", "ASUZU", "BAGFS",
+    "BAYRK", "BRYAT", "CIMSA", "DOHOL", "ECILC", "EKGYO", "ENJSA", "HALKB",
+    "HURGZ", "IPEKE", "KARSN", "KONTR", "KRDMD", "MGROS", "ODAS", "SKBNK",
+    "TKFEN", "VESBE", "VESTL", "YKBNK", "ZOREN",
+
+    # Mevcut listenin kalanları (tekrarları temizledim)
+    "PETKM", "SISE", "AKBNK", "SAHOL", "PGSUS", "ARCLK", "KOZAL", "HEKTS",
+    "TOASO", "VESTL", "ENKAI", "GUBRF", "ODAS", "VESBE", "TKFEN", "HALKB",
+    "VAKBN", "EKGYO", "ASTOR", "KONTR", "OYAKC", "ALARK", "SKBNK", "YKBNK",
+    "BRSAN", "KRDMD"
+]
+
+# Tekrarları temizle
+HISSE_LISTESI = list(dict.fromkeys(HISSE_LISTESI))  # Sıralamayı korur
+print(f"Toplam taranacak hisse: {len(HISSE_LISTESI)}")
 
 # ====================== İNDİKATÖRLER ======================
 def calculate_rsi(close, period=14):
