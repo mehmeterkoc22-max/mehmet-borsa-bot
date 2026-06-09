@@ -1,165 +1,145 @@
 import os
+import io
+import time
 import asyncio
 import logging
-import time
-import random
-from datetime import datetime
-from threading import Thread
-from concurrent.futures import ThreadPoolExecutor
 import yfinance as yf
 import pandas as pd
+import mplfinance as mpf
+import pytz
+import matplotlib
+from datetime import datetime
 from flask import Flask
-from telegram import Update
+from threading import Thread
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
 
+# Render ve bulut sunucularda ekran (GUI) olmadığı için çökmesini önleyen kritik ayar
+matplotlib.use('Agg')
+
+# Loglama ayarları
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# ====================== FLASK ======================
+# --- 1. RENDER UYKU ENGELLEYİCİ (FLASK) & PING ROTASI ---
 app_web = Flask('')
+
 @app_web.route('/')
-def home(): return "Bot Aktif", 200
-@app_web.route('/ping')
-def ping(): return "PONG", 200
+def home(): 
+    return "Bot Aktif!", 200
 
-def run_web():
+def run_web(): 
+    # Render'ın atadığı dinamik portu yakalar, bulamazsa 8080 kullanır
     port = int(os.environ.get("PORT", 8080))
-    app_web.run(host='0.0.0.0', port=port, debug=False)
+    app_web.run(host='0.0.0.0', port=port)
 
-# ====================== AYARLAR ======================
+# --- 2. AYARLAR ---
 MY_CHAT_ID = 1033571271
-
-# Tüm BIST Hisseleri (Ana + Yıldız)
 HISSE_LISTESI = [
-    "THYAO","GARAN","ISCTR","EREGL","BIMAS","ASELS","SASA","TUPRS","FROTO","KCHOL","TCELL","PETKM",
-    "SISE","AKBNK","SAHOL","YKBNK","PGSUS","ARCLK","EKGYO","KOZAL","ASTOR","KONTR","HEKTS","OYAKC",
-    "TOASO","DOAS","GUBRF","VESTL","ENKAI","SOKM","BRSAN","CIMSA","ALARK","ODAS","VESBE","TKFEN",
-    "HALKB","VAKBN","SKBNK","ISMEN","GWIND","EUPWR","CWENE","YEOTK","SMRTG","REEDR","SDTTR","MOGAN",
-    "ALFAS","ARDYZ","AGROT","BEYAZ","ALVES","ADEL","GESAN","MAVI","LOGO","MPARK","SAYAS","TABGD",
-    "ULKER","ZOREN","BIOEN","BTCIM","CANTE","CCOLA","ECILC","ECZYT","ENJSA","FENER","GEDIK","HEKTS"
+    "XU100", "XU030", "XBANK", "THYAO", "EREGL", "ASELS", "AKBNK", "SISE", 
+    "TUPRS", "GARAN", "SASA", "HEKTS", "KCHOL", "ISCTR", "YKBNK", "BIMAS", "SAHOL", 
+    "PETKM", "ARCLK", "TOASO", "FROTO", "TCELL", "HALKB", "VAKBN", "EKGYO", "ENKAI", 
+    "KONTR", "ASTOR", "SMRTG", "ALARK", "GUBRF", "ODAS", "A1CAP", "BARMA", "ECOGR", 
+    "EGPRO", "GEDIK", "GMTAS", "KRDMB", "LRSHO", "MOGAN", "NTGAZ", "OYYAT", "PAGYO", 
+    "VKGYO", "MAVI", "BERA", "AGHOL", "ENJSA", "MPARK", "RALYH", "SOKM", "ADEL", 
+    "AFYON", "AKENR", "ALKA", "ANELE", "ARZUM", "AVOD", "BAGFS", "BANVT", "BRYAT", 
+    "BURCE", "DESPC", "DGATE", "GEREL", "GLRYH", "IEYHO", "KAREL", "KMPUR", "KONYA", 
+    "KORDS", "AKMGY", "BYDNR", "IZINV", "PRZMA", "ENDAE", "ERCB", "PLTUR", "YAPRK"
 ]
 
-# ====================== PARAMETRELER ======================
-RSI_PERIOD = 9
-MACD_FAST = 8
-MACD_SLOW = 17
-MACD_SIGNAL = 9
-
-# ====================== VERİ ÇEKME ======================
+# --- 3. VERİ MOTORU ---
 def get_stock_data(ticker):
     try:
-        df = yf.download(f"{ticker}.IS", period="12d", interval="1h", progress=False, auto_adjust=True, timeout=10)
-        if df.empty or len(df) < 60:
-            return None
-
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-
+        symbol = ticker if ticker.endswith(".IS") or ticker.startswith("^") else f"{ticker}.IS"
+        # 15 dakikalık verilerin boş dönmemesi için period maksimum 5 gün (5d) olmalıdır
+        df = yf.download(symbol, period="5d", interval="15m", progress=False, ignore_tz=True)
+        
+        if df is None or df.empty or len(df) < 35: return None
+        # yfinance v1.3.0+ sürümündeki MultiIndex sütun hatasını temizleyen satır
+        if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+        
         close = df['Close']
-        high = df['High']
-        low = df['Low']
-        volume = df['Volume']
-
-        fiyat = round(float(close.iloc[-1]), 2)
-
-        # Göstergeler
-        ema_50 = close.ewm(span=50, adjust=False).mean().iloc[-1]
-        ema_200 = close.ewm(span=200, adjust=False).mean().iloc[-1]
-        
-        # RSI (9)
         delta = close.diff()
-        gain = delta.where(delta > 0, 0).rolling(RSI_PERIOD).mean()
-        loss = -delta.where(delta < 0, 0).rolling(RSI_PERIOD).mean()
-        rsi = 100 - (100 / (1 + gain/loss))
-        current_rsi = round(float(rsi.iloc[-1]), 1)
-
-        # MACD (8,17,9)
-        exp_fast = close.ewm(span=MACD_FAST, adjust=False).mean()
-        exp_slow = close.ewm(span=MACD_SLOW, adjust=False).mean()
-        macd = exp_fast - exp_slow
-        signal = macd.ewm(span=MACD_SIGNAL, adjust=False).mean()
-        macd_guc = macd.iloc[-1] > signal.iloc[-1]
-
-        # ATR
-        tr = pd.concat([high - low, abs(high - close.shift()), abs(low - close.shift())], axis=1).max(axis=1)
-        atr = tr.rolling(14).mean().iloc[-1]
-
-        # Hacim
-        avg_vol = volume.rolling(20).mean().iloc[-1]
-        hacim_guc = volume.iloc[-1] > (avg_vol * 1.35)
-
-        # ====================== SİNYAL KOŞULU ======================
-        if (fiyat > ema_50 and fiyat > ema_200 and 
-            33 < current_rsi < 48 and 
-            macd_guc and hacim_guc):
-
-            stop = round(fiyat - (atr * 1.8), 2)
-            risk = max(fiyat - stop, 0.01)
-            hedef = round(fiyat + (risk * 3.0), 2)
-            kar_orani = round(((hedef - fiyat) / fiyat) * 100, 1)
-
-            return {
-                "kod": ticker,
-                "fiyat": fiyat,
-                "stop": stop,
-                "hedef": hedef,
-                "kar": kar_orani,
-                "rsi": current_rsi,
-                "hacim_guc": hacim_guc
-            }
-        return None
-
-    except:
-        return None
-
-# ====================== TARAMA ======================
-async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE, update=None):
-    try:
-        if update:
-            await update.message.reply_text("🔄 Tüm BIST taranıyor (RSI9 + MACD 8-17-9)...")
-        else:
-            await context.bot.send_message(MY_CHAT_ID, "🔄 Otomatik tarama başladı...")
-
-        with ThreadPoolExecutor(max_workers=12) as executor:
-            loop = asyncio.get_event_loop()
-            tasks = [loop.run_in_executor(executor, get_stock_data, kod) for kod in HISSE_LISTESI]
-            results = await asyncio.gather(*tasks)
-
-        valid = [s for s in results if s]
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        df['RSI'] = 100 - (100 / (1 + (gain / loss)))
         
-        if not valid:
-            await context.bot.send_message(MY_CHAT_ID, "🔍 Bu taramada güçlü sinyal bulunamadı.")
-            return
+        exp1 = close.ewm(span=12, adjust=False).mean()
+        exp2 = close.ewm(span=26, adjust=False).mean()
+        df['MACD'] = exp1 - exp2
+        df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
 
-        mesaj = "🚀 **RSI 9 + MACD(8,17,9) KALİTE SİNYALLER**\n\n"
-        for s in valid:
-            mesaj += (
-                f"**#{s['kod']}** 🔥\n"
-                f"💰 Giriş: `{s['fiyat']}` TL\n"
-                f"🎯 Hedef: `{s['hedef']}` (+%{s['kar']})\n"
-                f"🛑 Stop: `{s['stop']}`\n"
-                f"📊 RSI: `{s['rsi']}`\n"
-                f"📈 Hacim: {'✅ Güçlü' if s['hacim_guc'] else '❌'}\n"
-                f"────────────────────────\n\n"
-            )
-
-        await context.bot.send_message(chat_id=MY_CHAT_ID, text=mesaj, parse_mode='Markdown')
-
+        return {
+            "kod": ticker, 
+            "fiyat": float(close.iloc[-1]), 
+            "rsi": float(df['RSI'].iloc[-1]),
+            "rsi_prev": float(df['RSI'].iloc[-2]),
+            "macd": float(df['MACD'].iloc[-1]), 
+            "macd_sig": float(df['Signal'].iloc[-1]),
+            "df": df
+        }
     except Exception as e:
-        logging.error(f"Tarama hatası: {e}")
-        await context.bot.send_message(MY_CHAT_ID, "❌ Tarama sırasında hata oluştu.")
+        logging.error(f"{ticker} verisi çekilemedi: {e}")
+        return None
+
+# --- 4. ANA TARAMA FONKSİYONU ---
+async def sinyal_tara(context: ContextTypes.DEFAULT_TYPE):
+    logging.info("--- Tarama Başlatıldı ---")
+    bulunan_sinyal = 0
+    
+    for kod in HISSE_LISTESI:
+        s = get_stock_data(kod)
+        if not s: continue
+
+        # ORİJİNAL KRİTER: RSI 25'i veya esnetilmiş olarak 30'u yukarı kesmiş (DİP DÖNÜŞ) VE MACD Pozitif
+        if s['rsi_prev'] < 30 and s['rsi'] >= 30 and s['macd'] > s['macd_sig']:
+            bulunan_sinyal += 1
+            data_plot = s['df'].tail(50)
+            
+            apds = [
+                mpf.make_addplot(data_plot['RSI'], panel=1, color='purple', ylabel='RSI'),
+                mpf.make_addplot(data_plot['MACD'], panel=2, color='blue', ylabel='MACD'),
+                mpf.make_addplot(data_plot['Signal'], panel=2, color='orange')
+            ]
+            
+            # Sunucuda dosya yazma izni (permission) hatasını aşmak için bellekte (buffer) çizim yapıyoruz
+            buf = io.BytesIO()
+            mpf.plot(data_plot, type='candle', style='charles', addplot=apds, 
+                     volume=True, savefig=buf, title=f"#{s['kod']} DIP DONUS")
+            buf.seek(0)
+
+            mesaj = (
+                f"🚀 **#{s['kod']} - DİPTEN DÖNÜŞ**\n\n"
+                f"💰 **Fiyat:** {s['fiyat']:,.2f} TL\n"
+                f"📉 **RSI:** {s['rsi_prev']:.1f} ➔ {s['rsi']:.1f} 🔥\n"
+                f"📊 **MACD:** {s['macd']:.2f} 🟢\n\n"
+                f"🎯 **Hedef:** {s['fiyat']*1.05:,.2f} TL\n"
+                f"🛑 **Stop:** {s['fiyat']*0.97:,.2f} TL"
+            )
+            
+            await context.bot.send_photo(chat_id=MY_CHAT_ID, photo=buf, caption=mesaj, parse_mode='Markdown')
+            await asyncio.sleep(0.5)
+
+    if bulunan_sinyal == 0:
+        await context.bot.send_message(chat_id=MY_CHAT_ID, text="🔎 Tarama bitti. Şu an kriterlere uyan bir fırsat bulunamadı.")
+    
+    logging.info("--- Tarama Tamamlandı ---")
 
 async def manuel_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    asyncio.create_task(sinyal_tara(context, update))
+    await update.message.reply_text("🔎 Tarama başlatıldı...")
+    await sinyal_tara(context)
 
-# ====================== BAŞLAT ======================
+# --- 5. ANA BAŞLATICI ---
 if __name__ == '__main__':
-    Thread(target=run_web, daemon=True).start()
+    # Flask sunucusunu arka planda başlat
+    Thread(target=run_web).start()
     
-    TOKEN = "8027732851:AAFTv0qeU0REVmvjaeCaG8ZkOfmK0ENjiJc"
+    # Token'ı gizli ortam değişkeninden (Environment Variable) okuyoruz
+    TOKEN = os.environ.get("TELEGRAM_TOKEN", "7984025004:AAGD1lLv5RGOIAiJ9wbQfaxSS7r6BGLteoA")
     app = ApplicationBuilder().token(TOKEN).build()
     
-    app.add_handler(CommandHandler('analiz', manuel_analiz))
-    app.job_queue.run_repeating(sinyal_tara, interval=1800, first=30)  # 30 dakikada bir
+    if app.job_queue:
+        # 15 dakikalık (900 saniye) periyotlarla otomatik çalışma ayarı
+        app.job_queue.run_repeating(sinyal_tara, interval=900, first=5)
     
-    logging.info(f"🤖 Bot Aktif → RSI({RSI_PERIOD}) | MACD({MACD_FAST},{MACD_SLOW},{MACD_SIGNAL})")
+    app.add_handler(CommandHandler('analiz', manuel_analiz))
     app.run_polling()
