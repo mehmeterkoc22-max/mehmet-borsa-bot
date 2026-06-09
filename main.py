@@ -32,10 +32,24 @@ def run_web():
 
 # ====================== AYARLAR ======================
 MY_CHAT_ID = 1033571271
-HISSE_LISTESI = ["THYAO","GARAN","ISCTR","EREGL","BIMAS","ASELS","SASA","TUPRS","FROTO","KCHOL",
-                 "TCELL","PETKM","SISE","AKBNK","SAHOL","PGSUS","ARCLK","KOZAL","HEKTS","TOASO",
-                 "VESTL","ENKAI","GUBRF","ODAS","VESBE","TKFEN","HALKB","VAKBN","EKGYO","ASTOR",
-                 "KONTR","OYAKC","ALARK","SKBNK","YKBNK","BRSAN","KRDMD"]
+
+# BIST 30 ve BIST 100 Hisselerinin Güncel Listesi (Tekilleştirilmiş)
+HISSE_LISTESI = sorted(list(set([
+    # BIST 30
+    "AKBNK", "ALARK", "ARCLK", "ASELS", "ASTOR", "BIMAS", "BRSAN", "EKGYO", "ENKAI", "EREGL",
+    "FROTO", "GARAN", "GUBRF", "HALKB", "HEKTS", "ISCTR", "KCHOL", "KONTR", "KOZAL", "KRDMD",
+    "ODAS", "OYAKC", "PETKM", "PGSUS", "SASA", "SISE", "TCELL", "THYAO", "TOASO", "TUPRS",
+    "VAKBN", "VESBE", "VESTL", "YKBNK",
+    # BIST 100 Ekstra
+    "AEFES", "AGROT", "AHGAZ", "AKCNS", "AKFGY", "AKSA", "ALFAS", "ANSGR", "BATAŞ", "BERA",
+    "BFREN", "BIENY", "BOBET", "BORAN", "BRYAT", "BUCIM", "CANTE", "CCOLA", "CIMSA", "CWENE",
+    "DOAS", "DOHOL", "EUPWR", "ECILC", "EGEEN", "EGENV", "ENJSA", "ERCB", "ECZYT", "GENIL",
+    "GESAN", "GIPTA", "GOLTS", "IHAAS", "INVEO", "INVES", "IPEKE", "ISGYO", "ISMEN", "IZMDC",
+    "KAYSE", "KCAER", "KMPUR", "KONYA", "KORDS", "KOZAA", "LMKDC", "MAVI", "MGROS", "MIATK",
+    "NETAS", "NTHOL", "NTGAZ", "OTKAR", "OYAKC", "PENTA", "QUAGR", "REEDR", "RYSAS", "SAYAS",
+    "SDTTR", "SMRTG", "SOKM", "TABGD", "TARKM", "TATEN", "TIRE", "TKFEN", "TMSN", "TSKB",
+    "TURSG", "TTKOM", "TTRAK", "TUKAS", "ULKER", "YEOTK", "ZRENG"
+])))
 
 # ====================== İNDİKATÖRLER ======================
 def calculate_rsi(close, period=14):
@@ -116,9 +130,10 @@ def get_stock_data(ticker: str):
 # ====================== TARAMA ======================
 async def sinyal_tara(update: Update = None, context: ContextTypes.DEFAULT_TYPE = None):
     if update:
-        await update.message.reply_text("🔄 BIST orta seviye tarama yapılıyor...")
+        await update.message.reply_text("🔄 BIST 30/100 orta seviye tarama yapılıyor...")
         
-    with ThreadPoolExecutor(max_workers=12) as executor:
+    # Genişleyen liste için eşzamanlı iş parçacığı (worker) sayısı 25'e yükseltildi
+    with ThreadPoolExecutor(max_workers=25) as executor:
         loop = asyncio.get_event_loop()
         tasks = [loop.run_in_executor(executor, get_stock_data, kod) for kod in HISSE_LISTESI]
         results = await asyncio.gather(*tasks)
@@ -134,7 +149,7 @@ async def sinyal_tara(update: Update = None, context: ContextTypes.DEFAULT_TYPE 
     
     mesaj = f"📊 **ORTA SEVİYE TRADE TARAMASI** ({len(signals)} adet) - {datetime.now().strftime('%H:%M')}\n\n"
     
-    for s in signals[:10]:
+    for s in signals[:15]:  # Genişleyen listeden dolayı en iyi 15 sinyal listelenir
         mesaj += (
             f"**#{s['kod']}** {s['pattern']}\n"
             f"💰 Fiyat: `{s['fiyat']}`\n"
@@ -156,7 +171,7 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler('analiz', sinyal_tara))
     app.job_queue.run_repeating(sinyal_tara, interval=1800, first=30)
     
-    logging.info("✅ Bot başlatıldı - Orta Seviye Tarama Modu")
-    print("🤖 Bot çalışıyor... Orta seviye filtre aktif.")
+    logging.info("✅ Bot başlatıldı - BIST 100 Genişletilmiş Mod")
+    print("🤖 Bot çalışıyor... BIST 100 filtresi aktif.")
     
     app.run_polling(drop_pending_updates=True)
